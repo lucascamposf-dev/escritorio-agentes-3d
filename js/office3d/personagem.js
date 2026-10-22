@@ -92,7 +92,17 @@ export class Personagem {
     this.rosto(cab, pele, robo);
     if (!robo) this.cabelo(cab);
     this.acessorios(cab, tronco);
+
+    // junta as pecas de cada parte do corpo (cada junta se move inteira): ~60 malhas viram ~25.
+    // Olhos, boca e peito animam sozinhos e ficam separados.
+    const excluir = new Set([...this.olhos, this.boca, this.bocaO, this.corpo].filter(Boolean));
+    this.geosProprias = [];
+    for (const g of [quadril, this.pernaE, this.pernaD, this.joelhoE, this.joelhoD, tronco, this.ombroE, this.ombroD,
+      this.cotoveloE, this.cotoveloD, this.maoE, this.maoD, cab]) this.geosProprias.push(...k.mesclar(g, { profundo: false, excluir, guardar: false }));
   }
+
+  // libera as geometrias que so este personagem usa (as pecas mescladas)
+  liberar() { for (const g of this.geosProprias || []) g.dispose(); this.geosProprias = []; }
 
   roupaDetalhes(tronco, roupa, roupa2, largura) {
     const k = this.kit, s = this.skin, tipo = s.roupa.tipo;

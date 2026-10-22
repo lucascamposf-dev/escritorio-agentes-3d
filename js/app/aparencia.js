@@ -208,6 +208,7 @@ function processar() {
   mini.grupo.add(p.raiz);
   mini.r.render(mini.cena, mini.cam);
   mini.grupo.remove(p.raiz);
+  p.liberar();
   const c = canvas.getContext('2d');
   c.clearRect(0, 0, canvas.width, canvas.height);
   c.drawImage(mini.r.domElement, 0, 0, canvas.width, canvas.height);
@@ -219,7 +220,7 @@ function iniciarPrevia(canvas, skin) {
   st.cam.position.set(0, 1.05, 5.2); st.cam.lookAt(0, 0.98, 0);
   let p = null, t = 0, vivo = true;
   const poses = ['em pe', 'acenar', 'comemorar', 'conversar', 'pensar'];
-  const trocar = (s) => { if (p) st.grupo.remove(p.raiz); p = new Personagem(st.kit, s); st.grupo.add(p.raiz); };
+  const trocar = (s) => { if (p) { st.grupo.remove(p.raiz); p.liberar(); } p = new Personagem(st.kit, s); st.grupo.add(p.raiz); };
   trocar(skin);
   let antes = performance.now();
   const ctx = canvas.getContext('2d');
@@ -236,7 +237,7 @@ function iniciarPrevia(canvas, skin) {
     requestAnimationFrame(quadro);
   };
   quadro();
-  previa = { trocar, parar: () => { vivo = false; st.kit.liberar(); st.r.dispose(); } };
+  previa = { trocar, parar: () => { vivo = false; if (p) p.liberar(); st.kit.liberar(); st.r.dispose(); } };
 }
 function pararPrevia() { if (previa) { previa.parar(); previa = null; } }
 

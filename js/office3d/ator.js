@@ -23,7 +23,7 @@ export class Ator {
 
   trocarSkin(skin) {
     const pose = this.p ? this.p.pose : 'em pe', opc = this.p ? this.p.opc : {}, obj = this.p ? this.p.objeto : null;
-    if (this.p) this.raiz.remove(this.p.raiz);
+    if (this.p) { this.raiz.remove(this.p.raiz); this.p.liberar(); }
     this.skin = skin;
     this.p = new Personagem(this.kit, skin);
     this.p.setPose(pose, opc);

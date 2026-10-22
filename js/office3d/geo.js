@@ -2,6 +2,7 @@
 // e texturas desenhadas em canvas. Tudo que um Kit cria e liberado junto em kit.liberar().
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 export class Kit {
   constructor(raiz) {
@@ -32,7 +33,7 @@ export class Kit {
     let g = this.geos.get(k);
     if (!g) {
       if (tipo === 'caixa') g = new THREE.BoxGeometry(...p);
-      else if (tipo === 'rcaixa') g = new RoundedBoxGeometry(p[0], p[1], p[2], 3, Math.min(p[3], Math.min(p[0], p[1], p[2]) / 2 - 0.001));
+      else if (tipo === 'rcaixa') g = new RoundedBoxGeometry(p[0], p[1], p[2], 2, Math.min(p[3], Math.min(p[0], p[1], p[2]) / 2 - 0.001));
       else if (tipo === 'cil') g = new THREE.CylinderGeometry(p[0], p[1], p[2], p[3] || 24);
       else if (tipo === 'esf') g = new THREE.SphereGeometry(p[0], p[1] || 20, p[2] || 14);
       else if (tipo === 'plano') g = new THREE.PlaneGeometry(p[0], p[1]);
@@ -54,7 +55,10 @@ export class Kit {
   malha(geo, m, x = 0, y = 0, z = 0, pai = this.raiz, sombra = true) {
     const me = new THREE.Mesh(geo, m && m.isMaterial ? m : this.mat(m));
     me.position.set(x, y, z);
-    me.castShadow = me.receiveShadow = sombra;
+    // so pecas maiores que ~25 cm projetam sombra (cada sombra e mais uma chamada de desenho)
+    if (!geo.boundingSphere) geo.computeBoundingSphere();
+    me.receiveShadow = sombra;
+    me.castShadow = sombra && geo.boundingSphere.radius > 0.13;
     pai.add(me);
     return me;
   }
@@ -82,6 +86,45 @@ export class Kit {
     t.anisotropy = 4;
     this.texs.push(t);
     return t;
+  }
+
+  // junta malhas que nao se mexem umas em relacao as outras numa so por material
+  // (muito menos chamadas de desenho). O grupo em si continua podendo se mover/escalar.
+  //   profundo: true = todos os descendentes (moveis); false = so os filhos diretos (partes do corpo)
+  //   excluir: malhas animadas sozinhas (olho que pisca, boca...) ficam como estao
+  //   guardar: false = as geometrias novas nao entram no cache (o dono as libera; ex.: personagens)
+  // Devolve as geometrias criadas.
+  mesclar(grupo, { profundo = true, excluir = new Set(), guardar = true } = {}) {
+    grupo.updateMatrixWorld(true);
+    const inv = grupo.matrixWorld.clone().invert();
+    const porMat = new Map(), tirar = [];
+    const pegar = (o) => {
+      if (!o.isMesh || excluir.has(o) || o.material.wireframe !== undefined && o.material.wireframe) return;
+      const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+      for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k);
+      if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+      g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld));
+      const l = porMat.get(o.material) || { geos: [], sombra: false };
+      l.geos.push(g); l.sombra = l.sombra || o.castShadow;
+      porMat.set(o.material, l);
+      tirar.push(o);
+    };
+    if (profundo) grupo.traverse(pegar); else for (const o of grupo.children) pegar(o);
+    for (const o of tirar) o.parent.remove(o);
+    // grupos que ficaram vazios saem (luzes e malhas excluidas continuam no lugar)
+    if (profundo) for (const o of [...grupo.children]) if (o.isGroup && !o.children.length) grupo.remove(o);
+    const criadas = [];
+    for (const [m, l] of porMat) {
+      const g = l.geos.length === 1 ? l.geos[0] : mergeGeometries(l.geos, false);
+      if (l.geos.length > 1) for (const x of l.geos) x.dispose();
+      if (!g) continue;
+      if (guardar) this.geos.set('mescla' + g.uuid, g);
+      criadas.push(g);
+      const me = new THREE.Mesh(g, m);
+      me.castShadow = l.sombra; me.receiveShadow = true;
+      grupo.add(me);
+    }
+    return criadas;
   }
 
   liberar() {

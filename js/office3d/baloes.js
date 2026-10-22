@@ -42,6 +42,7 @@ export class Baloes {
   // reposiciona todos (chamado a cada quadro)
   atualizar() {
     const cam = this.engine.camera, w = this.camada.clientWidth, h = this.camada.clientHeight;
+    const vis = [];
     for (const b of this.itens.values()) {
       b.ator.topo(v);
       const dist = v.distanceTo(cam.position);
@@ -49,11 +50,26 @@ export class Baloes {
       const visivel = v.z < 1 && Math.abs(v.x) < 1.2 && Math.abs(v.y) < 1.2 && b.ator.raiz.visible !== false;
       b.el.style.display = visivel ? '' : 'none';
       if (!visivel) continue;
-      const x = (v.x * 0.5 + 0.5) * w, y = (-v.y * 0.5 + 0.5) * h;
       // longe da camera os baloes encolhem um pouco (sem sumir)
       const s = Math.max(0.85, Math.min(1.15, 18 / dist));
-      b.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%) scale(${s.toFixed(3)})`;
-      b.el.style.zIndex = String(1000 - Math.round(dist * 10));
+      if (!b.w || b.mediuTxt !== b.txt.textContent + b.el.className) { b.w = b.el.offsetWidth; b.h = b.el.offsetHeight; b.mediuTxt = b.txt.textContent + b.el.className; }
+      vis.push({ b, x: (v.x * 0.5 + 0.5) * w, y: (-v.y * 0.5 + 0.5) * h, s, dist, w: b.w * s, h: b.h * s });
+    }
+    // empilha: quem esta mais perto da camera fica no lugar; quem cruzar com ele sobe
+    // (distancia arredondada + id no desempate: a ordem nao fica trocando de um quadro para o outro)
+    vis.sort((a, c) => Math.round(a.dist * 2) - Math.round(c.dist * 2) || (a.b.ator.id < c.b.ator.id ? -1 : 1));
+    const postos = [];
+    for (const q of vis) {
+      for (let tentativa = 0; tentativa < 8; tentativa++) {
+        const cruza = postos.find((p) => Math.abs(p.x - q.x) < (p.w + q.w) / 2 - 4 && Math.abs(p.y - q.y) < (p.h + q.h) / 2 - 2);
+        if (!cruza) break;
+        q.y = cruza.y - (cruza.h + q.h) / 2 - 2;
+      }
+      postos.push(q);
+      // desliza ate a posicao nova (sem "pular" de um quadro para o outro)
+      q.b.yy = q.b.yy === undefined || Math.abs(q.b.yy - q.y) > 200 ? q.y : q.b.yy + (q.y - q.b.yy) * 0.35;
+      q.b.el.style.transform = `translate(${q.x.toFixed(1)}px, ${q.b.yy.toFixed(1)}px) translate(-50%, -100%) scale(${q.s.toFixed(3)})`;
+      q.b.el.style.zIndex = String(1000 - Math.round(q.dist * 10));
     }
   }
 

@@ -75,16 +75,20 @@ test("os 5 temas montam sem erro (e liberam a GPU ao trocar)", { skip }, async (
   await page.until(`ESC.pronto === true`, 15000);
   const ids = await page.eval(`import('/js/office3d/temas/index.js').then(m => m.TEMAS.map(t => t.id))`);
   assert.strictEqual(ids.length, 5);
-  let mem0 = null;
-  for (const id of [...ids, ids[0]]) {
-    await page.eval(`ESC.escritorio.trocarTema('${id}')`);
-    await new Promise((r) => setTimeout(r, 600));
-    await print("tema-" + id);
+  // vazamento: da 3 voltas pelos temas; se a troca deixasse lixo, a memoria cresceria a cada volta.
+  // (A 1a volta ainda enche os caches dos personagens; comparamos o fim da 2a com o fim da 3a.)
+  // O diretor fica parado para os personagens nao mudarem no meio da medicao.
+  await page.eval(`void (ESC.escritorio.diretor.tick = () => {})`);
+  const voltas = [];
+  for (let volta = 0; volta < 3; volta++) {
+    for (const id of [...ids.slice(1), ids[0]]) {
+      await page.eval(`ESC.escritorio.trocarTema('${id}')`);
+      if (volta === 0) { await new Promise((r) => setTimeout(r, 600)); await print("tema-" + id); }
+    }
     // desenha um quadro antes de medir (a contagem so inclui o que ja foi enviado a GPU)
-    // so a sala: desconta o cache dos personagens (pecas e numeros de camisa reaproveitados de proposito)
-    const mem = await page.eval(`(() => { const e = ESC.escritorio.engine, k = ESC.escritorio.diretor.kit; e.renderer.render(e.scene, e.camera); const m = e.renderer.info.memory; return JSON.stringify({ geometrias: m.geometries - k.geos.size, texturas: m.textures - k.texs.length }); })()`);
-    if (id === ids[0]) { if (mem0) assert.strictEqual(mem, mem0, "trocar de tema deixou lixo na GPU"); else mem0 = mem; }
+    voltas.push(await page.eval(`(() => { const e = ESC.escritorio.engine; e.renderer.render(e.scene, e.camera); return JSON.stringify(e.renderer.info.memory); })()`));
   }
+  assert.strictEqual(voltas[2], voltas[1], "trocar de tema deixou lixo na GPU: " + voltas.join(" -> "));
   assert.deepStrictEqual(limpo(), []);
 });
 
@@ -199,4 +203,20 @@ test("aparencia: troca o tema e a skin pela gaveta, e o editor salva um personal
   assert.deepStrictEqual(limpo(), []);
   await page.eval(`localStorage.removeItem('escritorio.config')`);
   await req("GET", "/set?agent=build&status=idle");
+});
+
+test("baloes nao se sobrepoem e subagentes tem nomes diferentes", { skip }, async () => {
+  for (let i = 0; i < 4; i++) await req("GET", `/sub?id=n${i}&name=Explore&text=x&kind=read`);
+  await abrir();
+  await page.until(`ESC.pronto === true`);
+  await page.until(`[...ESC.escritorio.diretor.atores.values()].filter(a => a.papel === 'sub').length === 4`);
+  const nomes = await page.eval(`[...ESC.escritorio.diretor.atores.values()].filter(a => a.papel !== 'plan' && a.papel !== 'build').map(a => a.nome)`);
+  assert.strictEqual(new Set(nomes).size, nomes.length, "nomes repetidos: " + nomes.join(", "));
+  // Auditor e Construtor no mesmo lugar: os baloes tem que se separar
+  await page.eval(`(() => { const d = ESC.escritorio.diretor; d.tick = ((t) => (dt, tt) => { for (const w of ['plan', 'build']) { const a = d.atores.get(w); a.fila = []; a.passo = null; a.x = 0; a.z = 3; } t.call(d, dt, tt); })(d.tick); })()`);
+  await new Promise((r) => setTimeout(r, 2500));
+  const cruzam = await page.eval(`(() => { const r = (id) => document.querySelector('.balao[data-id="' + id + '"] .txt').getBoundingClientRect(); const a = r('plan'), b = r('build'); return !(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top); })()`);
+  const info = await page.eval(`JSON.stringify(["plan", "build"].map((id) => { const e = document.querySelector('.balao[data-id="' + id + '"]'); const r = e.querySelector(".txt").getBoundingClientRect(); return { id, t: e.style.transform, top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left), right: Math.round(r.right), w: ESC.escritorio.baloes.itens.get(id).w }; }))`);
+  assert.strictEqual(cruzam, false, "os baloes do Auditor e do Construtor estao um em cima do outro: " + info);
+  for (let i = 0; i < 4; i++) await req("GET", `/sub?id=n${i}&status=done`);
 });

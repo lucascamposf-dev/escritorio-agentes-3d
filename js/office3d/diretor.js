@@ -305,6 +305,7 @@ export class Diretor {
     this.liberarReservas(a);
     this.liberarLugar(a);
     this.grupo.remove(a.raiz);
+    a.p.liberar();
     this.atores.delete(a.id);
     this.esc.baloes.remover(a.id);
   }

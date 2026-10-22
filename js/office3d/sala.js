@@ -172,6 +172,16 @@ export function construirSala(engine, tema) {
   // ---------- plantas ----------
   VASOS.forEach(([x, z], i) => planta(kit, T, x, z, i));
 
+  // ---------- junta o que nao se mexe (bem menos chamadas de desenho) ----------
+  // fica de fora o que anima: porta, relogio e as salinhas (cada salinha e mesclada sozinha,
+  // porque ela inteira "brota" com escala)
+  const animados = new Set([dobradica, rel, ...pods.flatMap((p) => [p.g, p.cad])]);
+  const fixo = new THREE.Group();
+  for (const o of [...raiz.children]) if (!animados.has(o) && !o.isLight) fixo.add(o);
+  raiz.add(fixo);
+  kit.mesclar(fixo);
+  for (const p of pods) { kit.mesclar(p.g); kit.mesclar(p.cad); }
+
   // ---------- decoracao propria do tema (nos lugares DECO e onde mais quiser) ----------
   if (T.extras) T.extras(ctx, DECO);
 
@@ -253,7 +263,7 @@ function salinha(kit, T, p, i) {
   const placa = kit.textura(128, 64, (c, w, h) => { c.fillStyle = '#10131a'; c.fillRect(0, 0, w, h); c.fillStyle = '#fff'; c.font = 'bold 40px Segoe UI, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('0' + (i + 1), w / 2, h / 2 + 2); });
   kit.malha(kit.geo('plano', 0.3, 0.15), kit.mat(0xffffff, { map: placa, rough: 0.5 }), (L + mp) / 2, 1.75, F + 0.015, g, false);
   // aparece com um "pop" quando um subagente precisa dela; as 2 primeiras ja existem
-  const pod = { tela, visivel: i < 2, escala: i < 2 ? 1 : 0, vel: 0 };
+  const pod = { tela, g, cad: cadMesh, visivel: i < 2, escala: i < 2 ? 1 : 0, vel: 0 };
   const aplicar = () => { const s = Math.max(0.0001, pod.escala); g.scale.set(s, s, s); g.visible = cadMesh.visible = pod.escala > 0.001; cadMesh.scale.setScalar(Math.max(0.0001, Math.min(1, pod.escala))); };
   aplicar();
   pod.mostrar = () => { pod.visivel = true; };

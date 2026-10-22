@@ -1,85 +1,87 @@
-# Escritório — painel visual dos agentes do opencode e do Claude Code
+# Escritório — painel 3D dos agentes do opencode e do Claude Code
 
-Painel local que mostra, em forma de "escritório" (2D em SVG ou 3D com three.js), o que os agentes
-estão fazendo: quem trabalha, qual ferramenta usa, pedidos de permissão, erros, subagentes,
-contexto usado e custo.
+Escritório 3D (three.js) onde os agentes viram personagens: sentam na mesa redonda para trabalhar,
+pedem permissão acenando, comemoram ao terminar e, livres, bebem água, tomam café, deitam no sofá
+ou jogam basquete. Cada subagente entra pela porta, ganha uma salinha, trabalha, entrega o
+resultado e vai embora. HUD por cima com contexto, tempo, custo, arquivos e log.
 
 ## Arquitetura
 
 ```
-opencode (porta 4096)  --SSE /event------>  server.js (porta 4747)  --SSE /events-->  index.html
-Claude Code (hooks) --claude-hook.js--POST /claude-->
+opencode (porta 4096)  --SSE /event------>  server.js (porta 4747)  --SSE /events-->  index.html + js/
+Claude Code (hooks) --claude-hook.js--POST /claude-->        |
+                                                    janela.js (PowerShell/user32: restaura, minimiza, fixa)
 ```
 
-- **server.js** — Node puro, sem dependências npm.
-  - opencode: conecta em `http://127.0.0.1:OC_PORT/event`, lê o fluxo com `sseEvents()` e traduz
-    cada evento em `handle()`. Reconecta a cada 3 s.
-  - Claude Code: recebe os eventos dos hooks em `POST /claude` e traduz em `handleClaude()`.
-    O contexto e o modelo vêm do final da transcrição (`ccUsage()`). Pode abrir a janela do
-    escritório sozinho (`openOffice()`, desligado com `OPEN_BROWSER=0`).
-  - Mantém um estado único `S` e transmite um snapshot a cada mudança (debounce de 120 ms em `push()`).
-  - Só liga porta, intervalos e conexão quando roda como `node server.js` (`start()`); quando é
-    importado (testes), só exporta as funções.
-- **claude-hook.js** — chamado pelo Claude Code em cada evento; repassa o JSON para `/claude` e,
-  se o servidor estiver fechado, liga o `server.js` em segundo plano.
-- **instalar-claude.js** — adiciona/remove (`--remover`) o hook em `~/.claude/settings.json`
-  (faz backup em `settings.json.backup-escritorio`).
-- **index.html** — página única, sem build. Três blocos de `<script>`:
-  1. alternância 2D/3D (salva em `localStorage['office.v3d']`);
-  2. sala 3D (`window.O3`): baixa o `three.min.js` só quando o 3D é ligado; **lê o estado dos
-     cartões 2D do DOM** (`data-status`, `data-kind`, `.bt`); os subagentes chegam em `O3.subs`;
-  3. cartões 2D, painel (contexto, tempo, arquivos, custo, log), som/notificações, demo e a
-     **única** conexão `EventSource('/events')` da página.
-- **three.min.js** — three.js r160 vendorizado (build UMD global `THREE`, já depreciada).
-- **test/** — testes com `node:test`. `browser.js` controla um Chrome/Edge headless pelo
-  protocolo DevTools (sem dependências).
+### Servidor (Node puro, CommonJS, sem dependências)
+- **server.js** — estado único `S`, traduz eventos do opencode (`handle()`) e do Claude Code
+  (`handleClaude()`), transmite snapshots (debounce de 120 ms em `push()`). Serve `index.html` e
+  as pastas `js/`, `css/`, `vendor/` (`serveStatic()`, sem sair delas). Só liga porta/intervalos
+  quando roda como `node server.js` (`start()`); os testes importam as funções.
+- **janela.js** — um PowerShell em segundo plano acha a janela pelo título ("Escritório") e
+  restaura (sem roubar o foco), minimiza e fixa por cima. `wakeWindow()` no server.js chama isso
+  quando o agente começa a trabalhar; o botão "ocultar" segura a janela até o próximo pedido.
+- **claude-hook.js** / **instalar-claude.js** — hook do Claude Code e o instalador
+  (`~/.claude/settings.json`, aponta para `E:/escritorio/claude-hook.js`).
+
+### Página (módulos ES, sem build; `js/package.json` marca a pasta como ESM)
+- **index.html** — só a estrutura do HUD e o import map do three.js.
+- **js/main.js** — liga conexão, HUD e a cena 3D (carregada à parte: se o WebGL falhar, o HUD fica).
+  `window.ESC` expõe estado e cena para testes/Console.
+- **js/app/** — `conexao.js` (a única `EventSource('/events')`), `hud.js`, `avisos.js` (sons e
+  notificações), `demo.js`, `config.js` (preferências no localStorage: tema, skins, qualidade,
+  câmera...), `aparencia.js` (gaveta de temas e skins, miniaturas 3D, editor de personagem).
+- **js/office3d/**
+  - `engine.js` — renderer, câmera (livre/seguir/cinema), luzes base, reflexos, bloom, qualidade.
+  - `layout.js` — **a planta** (mesa redonda e 8 lugares, 8 salinhas, copa, filtro, lounge, quadra,
+    porta, telão, lugares de atividades `SPOTS`, decoração `DECO`, obstáculos). Tudo lê daqui.
+  - `nav.js` — caminhos (A* em grade de 20 cm, com folga dos móveis).
+  - `geo.js` — `Kit`: materiais/geometrias em cache, peças, texturas em canvas, `mesclar()`.
+  - `sala.js` + `vista.js` + `temas/*.js` — a sala de um tema (5 temas; para criar outro, copie um
+    arquivo de `temas/` e registre em `temas/index.js`).
+  - `personagem.js` + `skins.js` — boneco articulado e poses; 13 skins prontas + aleatória com semente.
+  - `ator.js` — personagem com fila de tarefas (ir, direto, virar, sentar, levantar, fazer, func).
+  - `diretor.js` — estado → comportamento (principais, subagentes, figurantes, aspirador, basquete,
+    telas, telão, câmera seguir); `baloes.js` — balões HTML (empilham quando se cruzam).
 
 ### Modelo de estado (server.js)
-- Dois agentes principais fixos: `plan` (Auditor) e `build` (Construtor). `main` indica qual está ativo.
-- Status: `idle | working | waiting | error | done`; `kind`: `think | read | edit | bash | search | web | wait`.
-- `done` volta a `idle` após 8 s; `error` após 20 s; `working` sem sinal por 120 s vira `idle`.
-- Subagentes: sessões com `parentID` (opencode) ou ids `cc:*` (Claude Code). Ficam em
-  `childActive` (até 25 s sem sinal) e depois em `childDone` (8 s visíveis).
-- Custo e arquivos editados são contados **por projeto** (`projects`, via `proj()`); o painel
-  mostra os do projeto atual (`S.project`).
-- Toda coleção que cresce com eventos tem limite (`cap()`).
+- Agentes principais fixos `plan` (Auditor) e `build` (Construtor); `main` é o ativo.
+- Status `idle | working | waiting | error | done`; `kind` `think | read | edit | bash | search | web | wait`.
+- `S.session` = sessão principal atual (personagens aleatórios mudam a cada sessão nova).
+- Subagentes: `S.subs` (`working`/`done`); custo e arquivos contados por projeto.
 
 ## Comandos
 
+- Projeto em **`E:\escritorio`** (o disco C: desta máquina vive lotado). Temporários (downloads,
+  perfis do Chrome dos testes) em `E:\temp\escritorio`.
 - Rodar: `node server.js` (ou `npm start`) → http://localhost:4747. Node 22+ (testado no v24).
-- Local do projeto: `E:\escritorio` (o disco C: desta máquina vive lotado). Arquivos temporários
-  (downloads, perfis do Chrome dos testes) vão para `E:\temp\escritorio`: rode os testes com
-  `TEMP=E:\temp\escritorio TMP=E:\temp\escritorio npm test`.
-- Testes: `npm test`. O teste de navegador é pulado se não houver Chrome/Edge (`CHROME_PATH`
-  aponta outro). O teste do 3D leva ~20 s (o robô anda pela sala).
-- Ligar ao Claude Code: `node instalar-claude.js` (remover: `--remover`).
-- Variáveis: `PORT` (4747), `OC_PORT` (4096), `OPEN_BROWSER=0`, `ESCRITORIO_LOG=1` (liga o
-  `events.log`), `ESCRITORIO_LOG_FILE` (outro caminho para o log). No hook: `ESCRITORIO_PORT`.
-- Endpoints de depuração:
-  - `/set?agent=plan|build&status=idle|working|waiting|error|done&kind=edit&text=ola`
-  - `/sub?id=a1&name=explore&task=buscar&text=procurando&kind=search&status=working|done`
-  - `POST /state` com `{"agent":"build","status":"working","text":"..."}`
-  - Botão "demo" percorre todos os estados (clicar num personagem só muda a tela no demo ou sem
-    servidor); no console, `O3.setSubs([...])` simula subagentes no 3D.
+- Testes: `TEMP=E:\temp\escritorio TMP=E:\temp\escritorio npm test` (~2–5 min; o navegador roda
+  em qualidade baixa). `ESCRITORIO_PRINTS=<pasta>` salva capturas de tela (em qualidade alta).
+  Rodar um só: `node --test --test-name-pattern="vida" test/navegador.test.js`.
+- Nos testes de navegador, `ESC.escritorio.engine.escala`/`passoMax` aceleram o tempo.
+- Variáveis: `PORT`, `OC_PORT`, `OPEN_BROWSER=0`, `ESCRITORIO_JANELA=0` (sem controle da janela),
+  `ESCRITORIO_LOG=1` / `ESCRITORIO_LOG_FILE`, no hook `ESCRITORIO_PORT`.
+- Depuração: `/set?agent=…&status=…&kind=…&text=…`, `/sub?id=…&name=…&text=…&kind=…&status=working|done`,
+  botão ▶ (demo).
 
 ## Padrões de código
 
-- JavaScript simples, sem frameworks nem build. CommonJS no servidor.
-- Comentários e textos da interface em português; comentários do código sem acentos.
-- Estilo compacto: funções curtas, muitas expressões numa linha, aspas duplas no servidor e
-  simples na maior parte do front-end. Indentação de 2 espaços.
-- Texto vindo dos agentes vai para a tela sempre por `textContent` / `fillText`, nunca `innerHTML`.
-- Toda correção vem com teste em `test/` (um commit por mudança).
+- JavaScript simples, sem frameworks nem build. Comentários e textos em português; comentários
+  do código sem acentos. Estilo compacto, 2 espaços.
+- Texto vindo dos agentes vai para a tela por `textContent` / `fillText`, nunca `innerHTML`.
+- Toda mudança vem com teste em `test/` e um commit; só comite com `fail 0` no `npm test`.
 
 ## Cuidados importantes
 
-- O servidor escuta só em `127.0.0.1` e `allowed()` recusa (403) requests de outros sites
-  (Host diferente de localhost/127.0.0.1, `Origin` de outro endereço, `Sec-Fetch-Site`
-  cross-site/same-site). Não volte a pôr `Access-Control-Allow-Origin: *`.
-- Nomes de agente vindos de fora passam por `isAgent()` antes de virar chave de `S.agents`
-  (risco de `__proto__`).
-- Corpos de POST usam `readBody()` (UTF-8 correto, limite de 10 MB).
-- Objetos 3D criados dinamicamente precisam ser liberados da GPU ao sair (`freeBot()`).
-- O 3D depende de `.agent[data-who]`, `data-status`, `data-kind` e `.bt` dos cartões 2D;
-  renomear isso quebra o 3D silenciosamente (o teste de navegador pega).
-- `events.log` (quando ligado) contém prompts e comandos — não compartilhar. Está no `.gitignore`.
+- Segurança: o servidor escuta só em `127.0.0.1`; `allowed()` recusa outros sites (Host, Origin,
+  Sec-Fetch-Site). Nunca `Access-Control-Allow-Origin: *`. Nomes de agente passam por `isAgent()`.
+  POST usa `readBody()` (limite 10 MB). Estáticos só de `js/`, `css/`, `vendor/`.
+- GPU: geometrias de peças/personagens vêm do cache do `Kit` (largura do personagem é escala,
+  não medida). Peças mescladas de um personagem são dele: `Personagem.liberar()` ao trocar/remover.
+  O teste "5 temas" pega vazamento ao trocar de tema.
+- Desempenho: `Kit.malha` só dá sombra a peças > ~25 cm; móveis parados são mesclados
+  (`kit.mesclar`) — **não** mescle nada que anime (porta, relógio, salinhas como um todo,
+  decorações com `tick`).
+- A planta é compartilhada pelos temas: ao mexer em `layout.js`, rode `test/planta.test.js`
+  (todo lugar tem que ser alcançável a partir da porta).
+- `events.log` (quando ligado) contém prompts e comandos — não compartilhar (`.gitignore`).
