@@ -24,3 +24,25 @@ test("a pagina conecta e mostra o estado do servidor", { skip }, async () => {
   assert.deepStrictEqual(page.errors, []);
   await req("GET", "/set?agent=build&status=idle");
 });
+
+test("uma conexao /events por aba, e o 3D recebe os subagentes por ela", { skip }, async () => {
+  await req("GET", "/sub?id=nav1&name=explore&text=procurando");
+  await page.open(url);
+  await page.until(`document.getElementById('cSub').textContent === '1'`);
+  await new Promise((r) => setTimeout(r, 500));
+  assert.strictEqual(page.requests.filter((p) => p === "/events").length, 1, page.requests.join(" "));
+  assert.strictEqual(await page.eval(`(window.O3.subs || []).map(s => s.id).join()`), "nav1");
+  await req("GET", "/sub?id=nav1&status=done");
+});
+
+test("modo 3D liga, mostra o robo do subagente e nao da erro", { skip }, async () => {
+  await page.open(url, "try { localStorage.setItem('office.v3d', '1'); } catch {}");
+  await page.until(`window.O3 && window.O3.ready`, 15000);
+  const robos = () => page.eval(`O3.scene.children.filter(o => o.isGroup && o.children.some(c => c.isSprite)).length`);
+  const antes = await robos(); // os 2 agentes principais
+  await req("GET", "/sub?id=nav3d&name=explore&text=procurando");
+  await page.until(`O3.scene.children.filter(o => o.isGroup && o.children.some(c => c.isSprite)).length === ${antes + 1}`);
+  await req("GET", "/sub?id=nav3d&status=done");
+  await page.until(`O3.scene.children.filter(o => o.isGroup && o.children.some(c => c.isSprite)).length === ${antes}`, 25000);
+  assert.deepStrictEqual(page.errors, []);
+});

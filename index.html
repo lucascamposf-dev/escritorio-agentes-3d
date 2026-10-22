@@ -203,7 +203,7 @@ document.head.appendChild(css);
   /* ============ sala 3D ============ */
   (() => {
     const host = document.getElementById('stage3d');
-    const O3 = window.O3 = { tickers: [], ready: false };
+    const O3 = window.O3 = { tickers: [], ready: false, subs: [] }; // subs: preenchido pela conexao /events da pagina
     let renderer, scene, camera, clock, running = false, failed = false;
     const T = { x: 0, y: 1.1, z: 0 };
     const DEF = { az: 0.55, el: 0.42, r: 11 };
@@ -489,12 +489,8 @@ const P = {
 
       const BOT = 0xcfd6e4, BACC = 0x3ddc97, BDOOR = { x: 4.8, z: -3.5 };
       const BCOL = { working: '#3ddc97', done: '#27ae60' };
-      let subsData = [], subsFake = false;
-      O3.setSubs = arr => { subsFake = true; subsData = arr || []; };   // para testar no Console
-      try {
-        const es2 = new EventSource('/events');
-        es2.onmessage = e => { if (subsFake) return; try { subsData = JSON.parse(e.data).subs || []; } catch {} };
-      } catch {}
+      let subsFake = null;
+      O3.setSubs = arr => { subsFake = arr || []; };   // para testar no Console
 
       const bots = new Map();
       const botSay = s => '\u21B3 ' + (s.text || s.task || s.name || 'subagente');
@@ -561,6 +557,7 @@ const P = {
       };
 
       O3.tickers.push((dt, t) => {
+        const subsData = subsFake || O3.subs;
         // 1) cria robos para subagentes novos (se houver vaga)
         for (const s of subsData) {
           if (s.status === 'done' || bots.has(s.id)) continue;
@@ -978,7 +975,7 @@ const P = {
   if (location.protocol !== 'file:') {
     const es = new EventSource('/events');
     es.onopen = () => { connected = true; status(last); };
-    es.onmessage = e => { try { last = JSON.parse(e.data); connected = true; status(last); if (!demo) apply(last); } catch {} };
+    es.onmessage = e => { try { last = JSON.parse(e.data); connected = true; status(last); window.O3.subs = last.subs || []; if (!demo) apply(last); } catch {} };
     es.onerror = () => { connected = false; status(last); };
   } else { conn.textContent = 'abra por http://localhost:4747'; }
 
