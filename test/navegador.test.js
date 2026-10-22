@@ -22,6 +22,7 @@ test("a pagina conecta e mostra o estado do servidor", { skip }, async () => {
   assert.strictEqual(await page.eval(`document.querySelector('[data-who=build]').dataset.status`), "working");
   assert.match(await page.eval(`document.getElementById('conn').textContent`), /aguardando|conectado/);
   assert.deepStrictEqual(page.errors, []);
+  assert.ok(!page.requests.includes("/three.min.js"), "o modo 2D nao precisa baixar o three.js");
   await req("GET", "/set?agent=build&status=idle");
 });
 

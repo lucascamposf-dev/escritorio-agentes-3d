@@ -175,7 +175,6 @@
   </span>
 </header>
 <main class="office" id="office"></main>
-<script src="/three.min.js"></script>
 <div id="stage3d"></div>
 <script>
   /* ============ modo 3D (em construção): convive com o visual 2D ============ */
@@ -702,8 +701,21 @@ const P = {
       for (const f of O3.tickers) f(dt, t);
       renderer.render(scene, camera);
     }
+    // o three.js (670 KB) so e baixado quando o 3D e ligado
+    let loading = false;
+    function loadThree() {
+      if (loading) return;
+      loading = true;
+      const s = document.createElement('script');
+      s.src = '/three.min.js';
+      s.onload = start;
+      s.onerror = () => { loading = false; host.textContent = 'Não consegui carregar o 3D (three.min.js).'; host.style.color = '#8a8fa0'; host.style.padding = '12px'; };
+      document.head.appendChild(s);
+    }
+
     function start() {
       if (running || document.hidden || !document.body.classList.contains('v3d')) return;
+      if (!window.THREE) return loadThree();
       if (!init()) return;
       resize();
       running = true;
