@@ -10,6 +10,9 @@ const browser = require("./browser");
 const skip = !browser.available && "Chrome/Edge nao encontrado";
 let page, url;
 const print = (nome) => process.env.ESCRITORIO_PRINTS && page.screenshot(path.join(process.env.ESCRITORIO_PRINTS, nome + ".png"));
+// sem capturas de tela, os testes usam a qualidade baixa (o Chrome de teste desenha sem placa de video)
+const QUAL = process.env.ESCRITORIO_PRINTS ? "alta" : "baixa";
+const abrir = (extra = "") => page.open(url, `try { const c = JSON.parse(localStorage.getItem('escritorio.config') || '{}'); c.qualidade = '${QUAL}'; localStorage.setItem('escritorio.config', JSON.stringify(c)); } catch {} ${extra}`);
 const limpo = () => page.errors.filter((e) => !/WebGL|GPU stall|GL Driver/i.test(e));
 
 test.before(async () => {
@@ -21,7 +24,7 @@ test.after(async () => { if (page) await page.close(); await close(); });
 
 test("a pagina conecta, mostra o estado e liga o 3D sem erros", { skip }, async () => {
   await req("GET", "/set?agent=build&status=working&kind=read&text=lendo%20teste.js");
-  await page.open(url);
+  await abrir();
   await page.until(`window.ESC && ESC.estado && ESC.estado.agents.build.text === 'lendo teste.js'`);
   await page.until(`ESC.pronto === true`, 15000);
   assert.match(await page.eval(`document.getElementById('conn').textContent`), /aguardando|conectado/);
@@ -32,7 +35,7 @@ test("a pagina conecta, mostra o estado e liga o 3D sem erros", { skip }, async 
 
 test("uma conexao /events por aba", { skip }, async () => {
   await req("GET", "/sub?id=nav1&name=explore&text=procurando");
-  await page.open(url);
+  await abrir();
   await page.until(`document.getElementById('cSub').textContent === '1'`);
   await new Promise((r) => setTimeout(r, 500));
   assert.strictEqual(page.requests.filter((p) => p === "/events").length, 1, page.requests.join(" "));
@@ -40,7 +43,7 @@ test("uma conexao /events por aba", { skip }, async () => {
 });
 
 test("botoes da janela: ocultar e sempre por cima", { skip }, async () => {
-  await page.open(url, "try { localStorage.removeItem('escritorio.config'); } catch {}");
+  await abrir("try { const c = JSON.parse(localStorage.getItem('escritorio.config')); delete c.fixar; localStorage.setItem('escritorio.config', JSON.stringify(c)); } catch {}");
   await page.until(`!document.getElementById('bHide').hidden === ${process.platform === "win32"}`);
   if (process.platform !== "win32") return;
   janelaCmds.length = 0;
@@ -58,7 +61,7 @@ test("botoes da janela: ocultar e sempre por cima", { skip }, async () => {
 });
 
 test("demo mostra estados de mentira e volta ao estado real", { skip }, async () => {
-  await page.open(url);
+  await abrir();
   await page.until(`ESC.pronto === true`, 15000);
   await page.eval(`document.getElementById('bDemo').click()`);
   await page.until(`ESC.estado.project === 'demo'`);
@@ -68,7 +71,7 @@ test("demo mostra estados de mentira e volta ao estado real", { skip }, async ()
 });
 
 test("os 5 temas montam sem erro (e liberam a GPU ao trocar)", { skip }, async () => {
-  await page.open(url);
+  await abrir();
   await page.until(`ESC.pronto === true`, 15000);
   const ids = await page.eval(`import('/js/office3d/temas/index.js').then(m => m.TEMAS.map(t => t.id))`);
   assert.strictEqual(ids.length, 5);
@@ -77,14 +80,15 @@ test("os 5 temas montam sem erro (e liberam a GPU ao trocar)", { skip }, async (
     await page.eval(`ESC.escritorio.trocarTema('${id}')`);
     await new Promise((r) => setTimeout(r, 600));
     await print("tema-" + id);
-    const mem = await page.eval(`JSON.stringify(ESC.escritorio.engine.renderer.info.memory)`);
+    // desenha um quadro antes de medir (a contagem so inclui o que ja foi enviado a GPU)
+    const mem = await page.eval(`(() => { const e = ESC.escritorio.engine; e.renderer.render(e.scene, e.camera); return JSON.stringify(e.renderer.info.memory); })()`);
     if (id === ids[0]) { if (mem0) assert.strictEqual(mem, mem0, "trocar de tema deixou lixo na GPU"); else mem0 = mem; }
   }
   assert.deepStrictEqual(limpo(), []);
 });
 
 test("vitrine: todas as skins prontas e algumas aleatorias, em varias poses", { skip }, async () => {
-  await page.open(url);
+  await abrir();
   await page.until(`ESC.pronto === true`, 15000);
   const n = await page.eval(`(async () => {
     const THREE = await import('three');

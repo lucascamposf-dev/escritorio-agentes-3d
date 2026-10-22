@@ -52,7 +52,7 @@ async function launch() {
     return r.result.value;
   };
   // espera ate a expressao ser verdadeira (ou estoura o tempo)
-  page.until = async (expr, ms = 8000) => {
+  page.until = async (expr, ms = 20000) => {
     const end = Date.now() + ms;
     while (Date.now() < end) { try { if (await page.eval(expr)) return true; } catch {} await new Promise((r) => setTimeout(r, 100)); }
     throw new Error("tempo esgotado esperando: " + expr);
