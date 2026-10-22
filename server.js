@@ -483,7 +483,6 @@ function handleClaude(p) {
       break;
   }
 }
-setInterval(ccRefresh, 60000);
 
 // ---------- conexao com o servidor do opencode ----------
 function connectOpencode() {
@@ -519,10 +518,9 @@ function connectOpencode() {
   );
   req.on("error", retry);
 }
-connectOpencode();
 
 // ---------- relogio: expira "pronto"/"erro" e cobre eventos de fim perdidos ----------
-setInterval(() => {
+function tick() {
   const now = Date.now();
   for (const w of ["plan", "build"]) {
     const a = S.agents[w];
@@ -530,8 +528,7 @@ setInterval(() => {
     if (a.status === "working" && now - lastSignal > 120000) setA(w, "idle");
   }
   if (childActive.size || childDone.size) push();
-}, 1000);
-setInterval(() => { for (const r of clients) r.write(": ping\n\n"); }, 20000);
+}
 
 // ---------- HTTP ----------
 const server = http.createServer((req, res) => {
@@ -624,6 +621,16 @@ const server = http.createServer((req, res) => {
   res.end();
 });
 
-// 127.0.0.1: so aceita conexoes da propria maquina
-server.listen(PORT, "127.0.0.1", () =>
-  console.log(`Escritorio em http://localhost:${PORT} (ouvindo opencode na porta ${OC_PORT} e Claude Code em /claude)`));
+function start() {
+  connectOpencode();
+  setInterval(tick, 1000);
+  setInterval(() => { for (const r of clients) r.write(": ping\n\n"); }, 20000);
+  setInterval(ccRefresh, 60000);
+  // 127.0.0.1: so aceita conexoes da propria maquina
+  server.listen(PORT, "127.0.0.1", () =>
+    console.log(`Escritorio em http://localhost:${PORT} (ouvindo opencode na porta ${OC_PORT} e Claude Code em /claude)`));
+}
+
+// "node server.js" liga tudo; os testes so importam as funcoes
+if (require.main === module) start();
+module.exports = { S, server, handle, handleClaude, snapshot, setA };
