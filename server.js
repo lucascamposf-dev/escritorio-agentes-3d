@@ -571,6 +571,20 @@ function allowed(req) {
   return true;
 }
 
+// le o corpo inteiro em UTF-8, com limite (os hooks mandam o conteudo dos arquivos escritos)
+const MAX_BODY = 10 * 1024 * 1024;
+function readBody(req, res, done) {
+  let body = "", size = 0, over = false;
+  req.setEncoding("utf8");
+  req.on("data", (c) => {
+    if (over) return;
+    size += Buffer.byteLength(c);
+    if (size > MAX_BODY) { over = true; res.writeHead(413, { Connection: "close" }); res.end(); return; }
+    body += c;
+  });
+  req.on("end", () => { if (!over) done(body); });
+}
+
 function route(req, res) {
   if (!allowed(req)) { res.writeHead(403); return res.end(); }
   // base fixa: o cabecalho Host vem de fora e pode ser invalido
@@ -619,27 +633,21 @@ function route(req, res) {
 
   // eventos dos hooks do Claude Code
   if (url.pathname === "/claude" && req.method === "POST") {
-    let body = "";
-    req.on("data", (c) => (body += c));
-    req.on("end", () => {
+    return readBody(req, res, (body) => {
       try { handleClaude(JSON.parse(body || "{}")); res.writeHead(200); }
       catch { res.writeHead(400); }
       res.end();
     });
-    return;
   }
 
   if (url.pathname === "/state" && req.method === "POST") {
-    let body = "";
-    req.on("data", (c) => (body += c));
-    req.on("end", () => {
+    return readBody(req, res, (body) => {
       try {
         const j = JSON.parse(body || "{}");
         res.writeHead(setA(j.agent, j.status === "working" ? "working" : "idle", j.text, j.kind) ? 200 : 400);
       } catch { res.writeHead(400); }
       res.end();
     });
-    return;
   }
 
     if (url.pathname === "/three.min.js") {

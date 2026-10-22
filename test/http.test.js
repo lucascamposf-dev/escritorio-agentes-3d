@@ -72,3 +72,24 @@ test("a propria pagina e os hooks continuam funcionando", async () => {
   const h127 = await raw(["GET /favicon.ico HTTP/1.1", "Host: 127.0.0.1:4747", "Connection: close"]);
   assert.strictEqual(h127.status, 204);
 });
+
+test("corpo grande demais e recusado e o servidor segue no ar", async () => {
+  const r = await req("POST", "/claude", { "Content-Type": "application/json" }, "x".repeat(11 * 1024 * 1024));
+  assert.ok(r.status === 413 || r.error, "esperava 413, veio " + (r.status || r.error));
+  assert.strictEqual((await req("GET", "/favicon.ico")).status, 204);
+});
+
+test("acentos chegam inteiros mesmo divididos entre pacotes", async () => {
+  const body = Buffer.from(JSON.stringify({ hook_event_name: "PreToolUse", session_id: "u", tool_name: "Read", tool_input: { file_path: "C:/ação.txt" } }));
+  const cut = body.indexOf(Buffer.from("ç")) + 1; // parte o "ç" (2 bytes) no meio
+  const net = require("net");
+  await new Promise((ok) => {
+    const c = net.connect(require("./helpers").port(), "127.0.0.1", () => {
+      c.write(`POST /claude HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: ${body.length}\r\nConnection: close\r\n\r\n`);
+      c.write(body.subarray(0, cut));
+      setTimeout(() => c.write(body.subarray(cut)), 50);
+    });
+    c.on("data", () => {}); c.on("close", ok);
+  });
+  assert.strictEqual(app.S.agents.build.text, "lendo ação.txt");
+});
