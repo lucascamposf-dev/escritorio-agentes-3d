@@ -161,3 +161,42 @@ test("vida no escritorio: senta para trabalhar, subagentes nas salinhas, acena e
   await req("GET", "/set?agent=plan&status=idle");
   await req("GET", "/set?agent=build&status=idle");
 });
+
+test("aparencia: troca o tema e a skin pela gaveta, e o editor salva um personalizado", { skip }, async () => {
+  await req("GET", "/set?agent=build&status=working&kind=edit&text=editando");
+  await abrir("try { localStorage.removeItem('escritorio.config'); } catch {}");
+  await page.until(`ESC.pronto === true`);
+  await page.eval(`document.getElementById('bLook').click()`);
+  await page.until(`!document.getElementById('aparencia').hidden && document.querySelectorAll('#aparencia .tema').length === 5`);
+  // tema pelo cartao
+  await page.eval(`[...document.querySelectorAll('#aparencia .tema')].find(b => b.textContent.includes('Cyberpunk')).click()`);
+  await page.until(`ESC.escritorio.tema.id === 'cyberpunk' && ESC.config.get('tema') === 'cyberpunk'`);
+  // skin do Construtor: Ronaldinho
+  await page.eval(`[...document.querySelectorAll('#aparencia .abas button')][1].click()`);
+  await page.until(`document.querySelectorAll('#aparencia .quem').length >= 6`);
+  await page.eval(`[...document.querySelectorAll('#aparencia .quem')].find(q => q.textContent.includes('Construtor')).querySelector('button').click()`);
+  await page.until(`document.querySelectorAll('#aparencia .skin').length >= 14`);
+  await page.until(`(() => { const c = [...document.querySelectorAll("#aparencia .skin canvas")].at(-2); const d = c.getContext("2d").getImageData(64, 64, 1, 1).data; return d[3] > 0; })()`, 40000); // miniaturas prontas (a penultima tem pixel desenhado)
+  await print("aparencia-skins");
+  await page.eval(`[...document.querySelectorAll('#aparencia .skin')].find(b => b.textContent === 'Ronaldinho').click()`);
+  await page.until(`ESC.escritorio.diretor.atores.get('build').skin.nome === 'Ronaldinho'`);
+  // editor: personalizado para o Auditor
+  await page.eval(`[...document.querySelectorAll('#aparencia .quem')].find(q => q.textContent.includes('Auditor')).querySelector('button').click()`);
+  await page.until(`[...document.querySelectorAll('#aparencia .skin')].some(b => b.textContent.includes('Personalizado'))`);
+  await page.eval(`[...document.querySelectorAll('#aparencia .skin')].find(b => b.textContent.includes('Personalizado')).click()`);
+  await page.until(`document.querySelector('#aparencia canvas.previa')`);
+  await page.eval(`(() => { const i = document.querySelector('#aparencia .editor input[type=text]'); i.value = 'Meu agente'; i.dispatchEvent(new Event('input')); })()`);
+  await page.eval(`[...document.querySelectorAll('#aparencia .editor button')].find(b => b.textContent === 'coroa').click()`);
+  await new Promise((r) => setTimeout(r, 1200));
+  await print("aparencia-editor");
+  await page.eval(`[...document.querySelectorAll('#aparencia button')].find(b => b.textContent.includes('salvar')).click()`);
+  await page.until(`ESC.escritorio.diretor.atores.get('plan').skin.nome === 'Meu agente'`);
+  assert.ok(await page.eval(`ESC.escritorio.diretor.atores.get('plan').skin.acessorios.includes('coroa')`));
+  // a escolha fica salva no navegador
+  assert.strictEqual(await page.eval(`JSON.parse(localStorage.getItem('escritorio.config')).skins.build`), "ronaldinho");
+  await page.eval(`ESC.escritorio.engine.escala = 1`);
+  await print("aparencia-sala");
+  assert.deepStrictEqual(limpo(), []);
+  await page.eval(`localStorage.removeItem('escritorio.config')`);
+  await req("GET", "/set?agent=build&status=idle");
+});
