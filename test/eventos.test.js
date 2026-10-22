@@ -33,3 +33,13 @@ test("Claude Code: modo plan vai para o Auditor e Stop termina", () => {
   handleClaude({ hook_event_name: "Stop", session_id: "c1" });
   assert.strictEqual(S.agents.plan.status, "done");
 });
+
+test("sessao atual: muda com sessao nova do opencode ou do Claude Code", () => {
+  handle({ type: "session.created", properties: { info: { id: "ses_A", directory: "E:/x" } } });
+  assert.strictEqual(S.session, "ses_A");
+  handle({ type: "session.created", properties: { info: { id: "ses_filho", parentID: "ses_A" } } });
+  assert.strictEqual(S.session, "ses_A", "subagente nao muda a sessao");
+  handleClaude({ hook_event_name: "UserPromptSubmit", session_id: "cc_B" });
+  assert.strictEqual(S.session, "cc_B");
+  handleClaude({ hook_event_name: "Stop", session_id: "cc_B" });
+});

@@ -34,10 +34,14 @@ export class Personagem {
     const mangaLonga = ['moletom', 'terno', 'camisa', 'jaleco', 'traje', 'manto', 'ninja'].includes(tipo);
     const semManga = tipo === 'regata';
     const largura = s.largura || 1;
+    // a largura estica a peca (escala) em vez de mudar a medida: assim as geometrias sao sempre
+    // as mesmas e ficam no cache, por mais personagens aleatorios que aparecam
+    const L = (m) => { m.scale.x = largura; return m; };
+    this.L = L;
 
     R.scale.setScalar(s.altura || 1);
     const quadril = this.quadril = grupo(R, 0, QUADRIL, 0);
-    k.rcaixa(0.4 * largura, 0.18, 0.26, 0.06, tcalca === 'saia' ? calca : calca, 0, 0, 0, quadril);
+    L(k.rcaixa(0.4, 0.18, 0.26, 0.06, calca, 0, 0, 0, quadril));
 
     // pernas: coxa > joelho > canela > sapato
     const perna = (lado) => {
@@ -56,13 +60,13 @@ export class Personagem {
     [this.pernaD, this.joelhoD] = perna(-1);
 
     // saias e casacos compridos ficam presos ao quadril
-    if (tipo === 'manto') k.cil(0.27 * largura, 0.42, 0.74, roupa, 0, -0.38, 0, quadril, 16);
-    if (tipo === 'vestido' || tcalca === 'saia') k.cil(0.22 * largura, 0.3, 0.32, tipo === 'vestido' ? roupa : calca, 0, -0.14, 0, quadril, 16);
-    if (tipo === 'jaleco') { k.rcaixa(0.47 * largura, 0.36, 0.3, 0.05, roupa, 0, -0.14, -0.01, quadril); }
+    if (tipo === 'manto') L(k.cil(0.27, 0.42, 0.74, roupa, 0, -0.38, 0, quadril, 16));
+    if (tipo === 'vestido' || tcalca === 'saia') L(k.cil(0.22, 0.3, 0.32, tipo === 'vestido' ? roupa : calca, 0, -0.14, 0, quadril, 16));
+    if (tipo === 'jaleco') L(k.rcaixa(0.47, 0.36, 0.3, 0.05, roupa, 0, -0.14, -0.01, quadril));
 
     // tronco
     const tronco = this.tronco = grupo(quadril, 0, 0.05, 0);
-    const corpo = k.rcaixa((tipo === 'traje' ? 0.52 : 0.46) * largura, 0.52, tipo === 'traje' ? 0.32 : 0.28, 0.1, roupa, 0, 0.3, 0, tronco);
+    const corpo = L(k.rcaixa(tipo === 'traje' ? 0.52 : 0.46, 0.52, tipo === 'traje' ? 0.32 : 0.28, 0.1, roupa, 0, 0.3, 0, tronco));
     this.corpo = corpo;
     this.roupaDetalhes(tronco, roupa, roupa2, largura);
 
@@ -94,15 +98,19 @@ export class Personagem {
     const k = this.kit, s = this.skin, tipo = s.roupa.tipo;
     if (tipo === 'jersey' || tipo === 'camiseta') k.rcaixa(0.24, 0.04, 0.29, 0.015, roupa2, 0, 0.555, 0, tronco);
     if (tipo === 'jersey') {
-      // numero nas costas e pequeno na frente
+      // numero nas costas e pequeno na frente (material reaproveitado por numero/cor)
+      const chave = 'num:' + (s.roupa.numero || '10') + ':' + s.roupa.cor2;
+      let m = k.mats.get(chave);
+      if (!m) {
       const num = k.textura(128, 128, (c, w, h) => {
         c.clearRect(0, 0, w, h);
         c.font = 'bold 96px Arial Black, Segoe UI, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
         c.lineWidth = 8; c.strokeStyle = '#' + new THREE.Color(s.roupa.cor2).getHexString(); c.strokeText(s.roupa.numero || '10', w / 2, h / 2 + 6);
         c.fillStyle = '#' + new THREE.Color(s.roupa.cor2).getHexString(); c.fillText(s.roupa.numero || '10', w / 2, h / 2 + 6);
       });
-      const m = new THREE.MeshStandardMaterial({ map: num, transparent: true, roughness: 0.8 });
-      k.mats.set('num' + m.uuid, m);
+        m = new THREE.MeshStandardMaterial({ map: num, transparent: true, roughness: 0.8 });
+        k.mats.set(chave, m);
+      }
       const costas = k.malha(k.geo('plano', 0.3, 0.3), m, 0, 0.32, -0.145, tronco, false); costas.rotation.y = PI;
       k.malha(k.geo('plano', 0.11, 0.11), m, 0.1, 0.42, 0.145, tronco, false);
       for (const lado of [-1, 1]) k.caixa(0.02, 0.44, 0.18, roupa2, lado * 0.226 * largura, 0.3, 0, tronco); // faixas laterais
@@ -114,18 +122,17 @@ export class Personagem {
     }
     if (tipo === 'camisa') { k.rcaixa(0.26, 0.05, 0.29, 0.02, k.mat(0xffffff, { rough: 0.8 }), 0, 0.555, 0, tronco); for (let i = 0; i < 4; i++) k.esf(0.012, roupa2, 0, 0.2 + i * 0.1, 0.143, tronco); }
     if (tipo === 'terno' || tipo === 'jaleco') {
-      const camisa = k.malha(new THREE.CircleGeometry(0.11, 3), k.mat(tipo === 'terno' ? (s.roupa.cor2 ?? 0xffffff) : 0xdfe7f2, { rough: 0.8 }), 0, 0.47, 0.142, tronco, false);
+      const camisa = k.malha(k.geoFeita('triangulo', () => new THREE.CircleGeometry(0.11, 3)), k.mat(tipo === 'terno' ? (s.roupa.cor2 ?? 0xffffff) : 0xdfe7f2, { rough: 0.8 }), 0, 0.47, 0.142, tronco, false);
       camisa.rotation.z = -PI / 2; camisa.scale.set(1.1, 0.9, 1);
-      k.geos.set('camisa' + camisa.uuid, camisa.geometry);
       if (tipo === 'jaleco') { k.rcaixa(0.08, 0.06, 0.02, 0.01, roupa2, -0.12, 0.38, 0.145, tronco); k.cil(0.008, 0.008, 0.1, k.mat(0x3b5bdb), -0.1, 0.42, 0.15, tronco); }
     }
     if (tipo === 'traje') {
       k.rcaixa(0.4, 0.42, 0.18, 0.06, k.mat(0xdfe5ec, { rough: 0.6 }), 0, 0.3, -0.24, tronco);
-      k.rcaixa(0.53 * largura, 0.05, 0.33, 0.02, roupa2, 0, 0.18, 0, tronco);
+      this.L(k.rcaixa(0.53, 0.05, 0.33, 0.02, roupa2, 0, 0.18, 0, tronco));
       k.rcaixa(0.12, 0.08, 0.02, 0.02, k.mat(0x111111, { emis: 0x3da9ff, ei: 1.2 }), 0.1, 0.42, 0.165, tronco);
     }
-    if (tipo === 'manto') { k.rcaixa(0.48 * largura, 0.06, 0.3, 0.02, roupa2, 0, 0.1, 0, tronco); }
-    if (tipo === 'ninja') k.rcaixa(0.48 * largura, 0.07, 0.3, 0.02, roupa2, 0, 0.1, 0, tronco);
+    if (tipo === 'manto') this.L(k.rcaixa(0.48, 0.06, 0.3, 0.02, roupa2, 0, 0.1, 0, tronco));
+    if (tipo === 'ninja') this.L(k.rcaixa(0.48, 0.07, 0.3, 0.02, roupa2, 0, 0.1, 0, tronco));
     if (s.robo) { for (let i = 0; i < 3; i++) k.cil(0.025, 0.025, 0.02, k.mat(0x111111, { emis: [0xff5a5a, 0xffd166, 0x4ade80][i], ei: 2 }), -0.08 + i * 0.08, 0.4, 0.145, tronco).rotation.x = PI / 2; }
   }
 
@@ -152,9 +159,7 @@ export class Personagem {
       k.rcaixa(0.19, 0.085, 0.02, 0.03, labio, 0, 0.105, 0.208, cab);
       this.boca = k.rcaixa(0.16, 0.055, 0.02, 0.02, k.mat(0xffffff, { rough: 0.3 }), 0, 0.108, 0.215, cab);
     } else if (s.sorriso === 'grande') {
-      this.boca = k.malha(k.geo('toro', 0.055, 0.012, 6, 16), labio, 0, 0.13, 0.212, cab);
-      this.boca.geometry = new THREE.TorusGeometry(0.055, 0.013, 6, 16, PI);
-      k.geos.set('sorriso' + this.boca.uuid, this.boca.geometry);
+      this.boca = k.malha(k.geoFeita('sorriso', () => new THREE.TorusGeometry(0.055, 0.013, 6, 16, PI)), labio, 0, 0.13, 0.212, cab);
       this.boca.rotation.z = PI;
     } else this.boca = k.rcaixa(0.1, 0.022, 0.02, 0.01, labio, 0, 0.11, 0.212, cab);
     this.bocaO = k.esf(0.035, labio, 0, 0.1, 0.205, cab);
@@ -201,7 +206,7 @@ export class Personagem {
     }
     if (tem('oculosEscuros')) { k.rcaixa(0.36, 0.085, 0.03, 0.03, k.mat(0x0a0a0a, { rough: 0.1, metal: 0.6 }), 0, 0.255, 0.225, cab); }
     if (tem('fone')) {
-      const arco = k.malha(new THREE.TorusGeometry(0.255, 0.022, 6, 20, PI), escuro, 0, 0.25, 0, cab); arco.rotation.y = PI / 2; k.geos.set('arco' + arco.uuid, arco.geometry);
+      const arco = k.malha(k.geoFeita('arcoFone', () => new THREE.TorusGeometry(0.255, 0.022, 6, 20, PI)), escuro, 0, 0.25, 0, cab); arco.rotation.y = PI / 2;
       for (const x of [-0.245, 0.245]) { const c = k.cil(0.08, 0.08, 0.06, k.mat(s.roupa.cor2 ?? 0x2b2b2b, { rough: 0.5 }), x, 0.22, 0, cab); c.rotation.z = PI / 2; }
     }
     if (tem('bone') || tem('boneTras')) {

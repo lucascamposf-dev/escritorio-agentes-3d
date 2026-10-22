@@ -43,6 +43,13 @@ export class Kit {
     return g;
   }
 
+  // geometria especial (que geo() nao sabe fazer), criada uma vez e reaproveitada pela chave
+  geoFeita(chave, criar) {
+    let g = this.geos.get(chave);
+    if (!g) { g = criar(); this.geos.set(chave, g); }
+    return g;
+  }
+
   // coloca uma malha; m pode ser cor (numero/string) ou material
   malha(geo, m, x = 0, y = 0, z = 0, pai = this.raiz, sombra = true) {
     const me = new THREE.Mesh(geo, m && m.isMaterial ? m : this.mat(m));

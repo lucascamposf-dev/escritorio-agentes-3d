@@ -115,7 +115,10 @@ export class Engine {
 
   quadro() {
     if (document.hidden) return; // janela oculta: nao gasta GPU
-    const dt = Math.min(this.relogio.getDelta(), 0.1), t = this.relogio.elapsedTime;
+    // escala: acelera o tempo (usado nos testes para nao esperar os personagens andarem)
+    const dt = Math.min(this.relogio.getDelta(), this.passoMax || 0.1) * (this.escala || 1);
+    this.tempo = (this.tempo || 0) + dt;
+    const t = this.tempo;
     for (const f of this.tickers) f(dt, t);
     // seguir: depois de 6 s sem mexer no mouse, a camera desliza ate o foco
     if (this.modo === 'seguir' && this.foco && performance.now() - (this.mexeu || 0) > 6000) {

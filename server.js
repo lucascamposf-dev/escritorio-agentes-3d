@@ -18,6 +18,7 @@ const S = {
   oc: false,
   cc: false, // Claude Code ativo
   project: "",
+  session: "", // sessao principal atual (os personagens aleatorios mudam a cada sessao nova)
   model: "",
   ctxTokens: 0,
   cost: 0,
@@ -197,6 +198,7 @@ function handle(ev) {
     case "session.created":
     case "session.updated": {
       const i = p.info || {};
+      if (t === "session.created" && i.id && !i.parentID && i.id !== S.session) { S.session = i.id; push(); }
       if (i.id) {
         sessions.set(i.id, { parentID: i.parentID });
         cap(sessions, 500);
@@ -432,12 +434,14 @@ function handleClaude(p) {
 
   switch (ev) {
     case "SessionStart":
+      if (p.session_id && !p.agent_id) S.session = p.session_id;
       wakeWindow(false);
       ccUsage(p.transcript_path);
       push();
       break;
 
     case "UserPromptSubmit":
+      if (p.session_id && !p.agent_id) S.session = p.session_id;
       wakeWindow(true);
       main = p.permission_mode === "plan" ? "plan" : "build";
       if (S.agents[main].status === "waiting") S.agents[main].status = "working";

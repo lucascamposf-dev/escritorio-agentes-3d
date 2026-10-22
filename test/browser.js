@@ -32,7 +32,7 @@ async function launch() {
   const page = { errors: [], requests: [] };
   ws.onmessage = (m) => {
     const d = JSON.parse(m.data);
-    if (d.id && pending.has(d.id)) { pending.get(d.id)(d.result); pending.delete(d.id); }
+    if (d.id && pending.has(d.id)) { pending.get(d.id)(d.result || { erroCdp: d.error }); pending.delete(d.id); }
     if (d.method === "Runtime.exceptionThrown") page.errors.push(d.params.exceptionDetails.exception?.description || d.params.exceptionDetails.text);
     if (d.method === "Runtime.consoleAPICalled" && d.params.type === "error") page.errors.push(d.params.args.map((a) => a.value ?? a.description).join(" "));
     if (d.method === "Network.requestWillBeSent") page.requests.push(new URL(d.params.request.url).pathname);
@@ -48,6 +48,7 @@ async function launch() {
   };
   page.eval = async (expr) => {
     const r = await send("Runtime.evaluate", { expression: expr, returnByValue: true, awaitPromise: true });
+    if (r.erroCdp) throw new Error("Chrome recusou: " + JSON.stringify(r.erroCdp));
     if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text);
     return r.result.value;
   };

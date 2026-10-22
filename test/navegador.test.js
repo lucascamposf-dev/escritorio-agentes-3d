@@ -81,7 +81,8 @@ test("os 5 temas montam sem erro (e liberam a GPU ao trocar)", { skip }, async (
     await new Promise((r) => setTimeout(r, 600));
     await print("tema-" + id);
     // desenha um quadro antes de medir (a contagem so inclui o que ja foi enviado a GPU)
-    const mem = await page.eval(`(() => { const e = ESC.escritorio.engine; e.renderer.render(e.scene, e.camera); return JSON.stringify(e.renderer.info.memory); })()`);
+    // so a sala: desconta o cache dos personagens (pecas e numeros de camisa reaproveitados de proposito)
+    const mem = await page.eval(`(() => { const e = ESC.escritorio.engine, k = ESC.escritorio.diretor.kit; e.renderer.render(e.scene, e.camera); const m = e.renderer.info.memory; return JSON.stringify({ geometrias: m.geometries - k.geos.size, texturas: m.textures - k.texs.length }); })()`);
     if (id === ids[0]) { if (mem0) assert.strictEqual(mem, mem0, "trocar de tema deixou lixo na GPU"); else mem0 = mem; }
   }
   assert.deepStrictEqual(limpo(), []);
@@ -119,4 +120,44 @@ test("vitrine: todas as skins prontas e algumas aleatorias, em varias poses", { 
   await print("vitrine-ronaldinho-costas");
   await page.eval(`ESC.escritorio.sala.raiz.visible = true`);
   assert.deepStrictEqual(limpo(), []);
+});
+
+test("vida no escritorio: senta para trabalhar, subagentes nas salinhas, acena e vai embora", { skip }, async () => {
+  const d = "ESC.escritorio.diretor";
+  await req("GET", "/set?agent=build&status=working&kind=read&text=lendo%20app.js");
+  await req("GET", "/sub?id=v1&name=Explore&text=procurando%20rotas&kind=search");
+  await req("GET", "/sub?id=v2&name=general-purpose&text=rodando%20testes&kind=bash");
+  await abrir();
+  await page.until(`ESC.pronto === true`);
+  await page.eval(`void Object.assign(ESC.escritorio.engine, { escala: 3, passoMax: 0.4 })`);
+  // o Construtor senta no lugar dele e os dois subagentes, nas salinhas 01 e 02
+  await page.until(`${d}.atores.get('build')?.sentado?.id === 'mesa1'`, 30000);
+  await page.until(`${d}.atores.get('sub:v1')?.sentado && ${d}.atores.get('sub:v2')?.sentado`, 40000);
+  const lugares = await page.eval(`[${d}.atores.get('sub:v1').lugar.id, ${d}.atores.get('sub:v2').lugar.id].sort().join()`);
+  assert.strictEqual(lugares, "pod0,pod1");
+  // o balao mostra o que o agente esta fazendo
+  assert.match(await page.eval(`document.querySelector('.balao[data-id="build"] .txt').textContent`), /lendo app\.js/);
+  await page.eval(`void Object.assign(ESC.escritorio.engine, { escala: 1, passoMax: 0.1 })`);
+  await print("vida-trabalhando");
+
+  // um terceiro subagente ganha a salinha 03, que "brota" na sala
+  await page.eval(`void Object.assign(ESC.escritorio.engine, { escala: 3, passoMax: 0.4 })`);
+  await req("GET", "/sub?id=v3&name=Plan&text=pensando&kind=think");
+  await page.until(`${d}.atores.get('sub:v3')?.lugar?.id === 'pod2' && ESC.escritorio.sala.podVisivel(2)`);
+
+  // pedir permissao: o Auditor fica em pe acenando
+  await req("GET", "/set?agent=plan&status=waiting&text=pedindo%20permiss%C3%A3o");
+  await page.until(`${d}.atores.get('plan').p.pose === 'acenar'`, 20000);
+  assert.ok(await page.eval(`document.querySelector('.balao[data-id="plan"]').classList.contains('waiting')`));
+
+  // o subagente termina: entrega o resultado e sai pela porta
+  await req("GET", "/sub?id=v1&status=done");
+  await page.until(`${d}.atores.get('sub:v1')?.saindo === true`);
+  await page.until(`!${d}.atores.has('sub:v1')`, 90000);
+  assert.strictEqual(await page.eval(`${d}.lugares.has('pod0')`), false, "a salinha ficou presa");
+  assert.deepStrictEqual(limpo(), []);
+
+  for (const id of ["v2", "v3"]) await req("GET", `/sub?id=${id}&status=done`);
+  await req("GET", "/set?agent=plan&status=idle");
+  await req("GET", "/set?agent=build&status=idle");
 });
