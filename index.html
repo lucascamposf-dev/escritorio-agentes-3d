@@ -169,6 +169,8 @@
 <header>
   <span class="conn"><span id="dot" class="dot"></span><span id="conn">conectando&hellip;</span><span id="proj"></span></span>
   <span class="hb">
+    <button id="bPin" title="Manter a janela sempre por cima das outras" hidden>&#128204;</button>
+    <button id="bHide" title="Ocultar a janela (ela volta no seu pr&oacute;ximo pedido ao agente)" hidden>&#10515; ocultar</button>
     <button id="bSound" title="Ativar som e avisos do Windows">&#128276; avisos</button>
     <button id="bDemo" title="Ver todas as anima&ccedil;&otilde;es">&#9654; demo</button>
     <button id="bCompact" title="Esconder ou mostrar o painel">&#9645;</button>
@@ -946,6 +948,17 @@
     const v = prompt('Limite de contexto do modelo, em tokens (o Big Pickle usa cerca de 200000):', ctxLimit());
     if (v && parseInt(v, 10) > 1000) { store.set('office.ctx', String(parseInt(v, 10))); if (cur) apply(cur); }
   });
+  /* ============ janela: ocultar e sempre por cima ============ */
+  const bPin = $('bPin'), bHide = $('bHide');
+  const janela = j => fetch('/janela', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(j) }).catch(() => {});
+  function showWindow(w) {
+    const on = !!(w && w.controle);
+    bPin.hidden = bHide.hidden = !on;
+    bPin.classList.toggle('on', !!(w && w.pinned));
+  }
+  bPin.addEventListener('click', () => { const on = !bPin.classList.contains('on'); store.set('office.pin', on ? '1' : '0'); janela({ acao: 'fixar', on }); });
+  bHide.addEventListener('click', () => janela({ acao: 'ocultar' }));
+
   const bCompact = $('bCompact');
   function setCompact(on) { document.body.classList.toggle('compact', on); store.set('office.compact', on ? '1' : '0'); }
   bCompact.addEventListener('click', () => setCompact(!document.body.classList.contains('compact')));
@@ -993,8 +1006,9 @@
   }
   if (location.protocol !== 'file:') {
     const es = new EventSource('/events');
-    es.onopen = () => { connected = true; status(last); };
-    es.onmessage = e => { try { last = JSON.parse(e.data); connected = true; status(last); window.O3.subs = last.subs || []; if (!demo) apply(last); } catch {} };
+    // a escolha do "sempre por cima" fica no navegador e e reaplicada quando a janela abre
+    es.onopen = () => { connected = true; status(last); if (store.get('office.pin', '0') === '1') janela({ acao: 'fixar', on: true }); };
+    es.onmessage = e => { try { last = JSON.parse(e.data); connected = true; status(last); window.O3.subs = last.subs || []; showWindow(last.janela); if (!demo) apply(last); } catch {} };
     es.onerror = () => { connected = false; status(last); };
   } else { conn.textContent = 'abra por http://localhost:4747'; }
 

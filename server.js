@@ -26,6 +26,7 @@ const S = {
   subs: [], // lista de subagentes: { id, name, task, text, kind, status: working|done, parent }
   log: [],
   agents: { plan: mk(), build: mk() },
+  janela: { pinned: false, hidden: false, controle: process.platform === "win32" },
 };
 let main = "build";
 let lastSignal = 0;
@@ -220,6 +221,7 @@ function handle(ev) {
       if (isChild(i.sessionID)) { touchChild(i.sessionID); lastSignal = Date.now(); push(); break; }
       const a = pick(i.agent || i.mode);
       if (a) main = a;
+      if (i.role === "user") wakeWindow(true); // novo pedido no opencode
       if (i.role === "assistant") {
         if (i.modelID) S.model = i.modelID;
         if (typeof i.cost === "number" && i.id) addCost(i.id, i.cost);
@@ -309,23 +311,51 @@ function handle(ev) {
   }
 }
 
-// ---------- Claude Code (eventos enviados pelos hooks em POST /claude) ----------
+// ---------- janela do escritorio ----------
 const { exec } = require("child_process");
-const ccSessions = new Map(); // session_id -> ultimo sinal
-const ccSubs = new Map(); // agent_id do subagente -> id usado na tela
+const janela = require("./janela");
+const W = S.janela; // { pinned: sempre por cima, hidden: o usuario apertou "ocultar" }
 let lastOpen = 0;
 
-function openOffice() {
-  if (process.env.OPEN_BROWSER === "0") return;
-  if (clients.size > 0 || Date.now() - lastOpen < 60000) return; // ja esta aberto
-  lastOpen = Date.now();
-  const url = `http://localhost:${PORT}`;
+let opener = Object.assign((url) => {
   if (process.platform === "win32") {
     // abre como janela de aplicativo (igual a do opencode); se nao tiver Edge, usa o navegador padrao
-    exec(`start "" msedge --app=${url} --window-size=900,620`, (err) => { if (err) exec(`start "" ${url}`); });
+    exec(`start "" msedge --app=${url} --window-size=1280,800`, (err) => { if (err) exec(`start "" ${url}`); });
   } else if (process.platform === "darwin") exec(`open ${url}`);
   else exec(`xdg-open ${url}`);
+}, { real: true });
+function openOffice() {
+  if (process.env.OPEN_BROWSER === "0" && opener.real) return;
+  if (clients.size > 0 || Date.now() - lastOpen < 60000) return; // ja esta aberto
+  lastOpen = Date.now();
+  opener(`http://localhost:${PORT}`);
 }
+
+// o agente comecou a trabalhar: abre a janela, ou restaura se estiver minimizada.
+// So o botao "ocultar" da pagina segura a janela escondida, e so ate o proximo pedido.
+function wakeWindow(newRequest) {
+  if (newRequest && W.hidden) { W.hidden = false; push(); }
+  if (W.hidden) return;
+  // procura a janela pelo titulo antes de abrir outra (logo apos reiniciar o servidor,
+  // a janela que ja existe ainda esta reconectando e clients fica vazio)
+  janela.send("restore").then((r) => {
+    if (r === "ok") { if (W.pinned) janela.send("pin"); }
+    else if (clients.size === 0) openOffice();
+  });
+}
+
+// acoes dos botoes da pagina: { acao: "ocultar" } ou { acao: "fixar", on: true|false }
+function windowAction(j) {
+  if (j.acao === "ocultar") { W.hidden = true; janela.send("minimize"); }
+  else if (j.acao === "fixar") { W.pinned = !!j.on; janela.send(W.pinned ? "pin" : "unpin"); }
+  else return false;
+  push();
+  return true;
+}
+
+// ---------- Claude Code (eventos enviados pelos hooks em POST /claude) ----------
+const ccSessions = new Map(); // session_id -> ultimo sinal
+const ccSubs = new Map(); // agent_id do subagente -> id usado na tela
 
 function ccRefresh() {
   const now = Date.now();
@@ -402,13 +432,13 @@ function handleClaude(p) {
 
   switch (ev) {
     case "SessionStart":
-      openOffice();
+      wakeWindow(false);
       ccUsage(p.transcript_path);
       push();
       break;
 
     case "UserPromptSubmit":
-      openOffice();
+      wakeWindow(true);
       main = p.permission_mode === "plan" ? "plan" : "build";
       if (S.agents[main].status === "waiting") S.agents[main].status = "working";
       work("pensando…", "think");
@@ -635,6 +665,17 @@ function route(req, res) {
     return res.end("ok");
   }
 
+  // botoes da janela: ocultar e sempre por cima
+  if (url.pathname === "/janela" && req.method === "POST") {
+    return readBody(req, res, (body) => {
+      let ok = false;
+      try { ok = windowAction(JSON.parse(body || "{}")); } catch {}
+      const out = JSON.stringify(W);
+      res.writeHead(ok ? 200 : 400, { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(out) });
+      res.end(out);
+    });
+  }
+
   // eventos dos hooks do Claude Code
   if (url.pathname === "/claude" && req.method === "POST") {
     return readBody(req, res, (body) => {
@@ -684,5 +725,5 @@ function start() {
 
 // "node server.js" liga tudo; os testes so importam as funcoes
 if (require.main === module) start();
-module.exports = { S, server, handle, handleClaude, snapshot, setA, sseEvents,
+module.exports = { _setOpener: (fn) => { opener = fn; }, S, server, handle, handleClaude, snapshot, setA, sseEvents,
   sizes: () => ({ sessions: sessions.size, loggedParts: loggedParts.size, ccSubs: ccSubs.size, projects: projects.size }) };

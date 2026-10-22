@@ -3,6 +3,10 @@ process.env.OPEN_BROWSER = "0";
 const net = require("net");
 const app = require("../server.js");
 
+// os testes nunca mexem na janela de verdade: os comandos ficam gravados em janelaCmds
+const janelaCmds = [];
+require("../janela").setRunner((cmd) => { janelaCmds.push(cmd); return Promise.resolve("ok"); });
+
 let port = 0;
 function listen() {
   if (port) return Promise.resolve(port);
@@ -39,4 +43,12 @@ function req(method, path, headers = {}, body = "") {
 
 const reset = () => { for (const w of ["plan", "build"]) app.setA(w, "idle"); };
 
-module.exports = { app, listen, close, raw, req, reset, port: () => port };
+// abre uma conexao /events e a deixa aberta (como uma aba do escritorio)
+function sse() {
+  return new Promise((ok) => {
+    const c = net.connect(port, "127.0.0.1", () => c.write(`GET /events HTTP/1.1\r\nHost: localhost:${port}\r\n\r\n`));
+    c.once("data", (d) => { if (!String(d).startsWith("HTTP/1.1 200")) throw new Error("SSE recusado: " + d); ok(c); });
+  });
+}
+
+module.exports = { app, listen, close, raw, req, reset, sse, janelaCmds, port: () => port };

@@ -11,7 +11,7 @@ test.after(() => fs.rmSync(path.dirname(LOG), { recursive: true, force: true }))
 // roda num processo separado para ler as variaveis de ambiente do zero
 const run = (env) => execFileSync(process.execPath, ["-e",
   'require("./server.js").handleClaude({ hook_event_name: "UserPromptSubmit", session_id: "t", prompt: "segredo" })'],
-  { cwd: path.join(__dirname, ".."), env: { ...process.env, OPEN_BROWSER: "0", ESCRITORIO_LOG_FILE: LOG, ...env } });
+  { cwd: path.join(__dirname, ".."), env: { ...process.env, OPEN_BROWSER: "0", ESCRITORIO_JANELA: "0", ESCRITORIO_LOG_FILE: LOG, ...env } });
 
 test("sem ESCRITORIO_LOG nada e gravado", () => {
   run({ ESCRITORIO_LOG: "" });

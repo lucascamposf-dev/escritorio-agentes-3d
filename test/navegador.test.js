@@ -68,3 +68,22 @@ test("clicar no personagem nao altera o estado real; no demo so muda a tela", { 
   assert.ok(!page.requests.includes("/set"), "a pagina chamou /set no demo");
   assert.strictEqual(app.S.agents.build.status, "idle");
 });
+
+test("botoes da janela: ocultar e sempre por cima", { skip }, async () => {
+  const { janelaCmds } = require("./helpers");
+  await page.open(url, "try { localStorage.setItem('office.pin', '0'); } catch {}");
+  await page.until(`!document.getElementById('bHide').hidden === ${process.platform === "win32"}`);
+  if (process.platform !== "win32") return;
+  janelaCmds.length = 0;
+  await page.eval(`document.getElementById('bPin').click()`);
+  await page.until(`document.getElementById('bPin').classList.contains('on')`);
+  await page.eval(`document.getElementById('bHide').click()`);
+  await new Promise((r) => setTimeout(r, 300));
+  assert.deepStrictEqual(janelaCmds, ["pin", "minimize"]);
+  assert.strictEqual(app.S.janela.hidden, true);
+  await page.eval(`document.getElementById('bPin').click()`);
+  await new Promise((r) => setTimeout(r, 300));
+  assert.strictEqual(app.S.janela.pinned, false);
+  app.handleClaude({ hook_event_name: "UserPromptSubmit", session_id: "nav" }); // desfaz o ocultar
+  app.handleClaude({ hook_event_name: "Stop", session_id: "nav" });
+});
