@@ -39,4 +39,4 @@ function req(method, path, headers = {}, body = "") {
 
 const reset = () => { for (const w of ["plan", "build"]) app.setA(w, "idle"); };
 
-module.exports = { app, listen, close, raw, req, reset };
+module.exports = { app, listen, close, raw, req, reset, port: () => port };

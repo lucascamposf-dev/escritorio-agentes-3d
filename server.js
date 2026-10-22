@@ -538,12 +538,23 @@ const server = http.createServer((req, res) => {
   catch (e) { try { if (!res.headersSent) res.writeHead(500); res.end(); } catch {} }
 });
 
+// so a propria pagina e os hooks locais podem falar com o servidor: bloqueia
+// outros sites abertos no navegador (leitura do /events, /set via <img>...) e DNS rebinding
+const LOCAL = /^(localhost|127\.0\.0\.1)(:\d+)?$/i;
+function allowed(req) {
+  const host = String(req.headers.host || "").toLowerCase();
+  if (!LOCAL.test(host)) return false;
+  const site = req.headers["sec-fetch-site"];
+  if (site && site !== "same-origin" && site !== "none") return false;
+  const origin = req.headers.origin;
+  if (origin) { try { if (new URL(origin).host.toLowerCase() !== host) return false; } catch { return false; } }
+  return true;
+}
+
 function route(req, res) {
+  if (!allowed(req)) { res.writeHead(403); return res.end(); }
   // base fixa: o cabecalho Host vem de fora e pode ser invalido
   const url = new URL(req.url, "http://localhost");
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Headers", "content-type");
-  if (req.method === "OPTIONS") { res.writeHead(204); return res.end(); }
 
   if (url.pathname === "/events") {
     res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });

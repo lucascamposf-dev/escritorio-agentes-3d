@@ -34,3 +34,41 @@ test("/set e /state so aceitam os agentes plan e build", async () => {
   assert.strictEqual(app.S.agents.build.text, "lendo a.txt");
   assert.strictEqual((await req("GET", "/set?agent=plan&status=idle")).status, 200);
 });
+
+test("outros sites nao leem nem alteram o painel", async () => {
+  const evil = [
+    { Origin: "https://site-malicioso.com" },
+    { Origin: "http://localhost:5173" }, // outro servidor local
+    { Origin: "null" }, // pagina aberta como arquivo
+    { "Sec-Fetch-Site": "cross-site" }, // <img src=...> nao manda Origin
+    { "Sec-Fetch-Site": "same-site" },
+    { Host: "rebind.example.com:4747" }, // DNS rebinding
+  ];
+  for (const h of evil) {
+    for (const [m, p] of [["GET", "/events"], ["GET", "/set?agent=plan&status=working"], ["GET", "/sub?id=x"], ["POST", "/claude"], ["POST", "/state"]]) {
+      const r = await req(m, p, h, m === "POST" ? "{}" : "");
+      assert.strictEqual(r.status, 403, `${m} ${p} ${JSON.stringify(h)}`);
+    }
+  }
+  assert.strictEqual(app.S.agents.plan.status, "idle");
+});
+
+test("a propria pagina e os hooks continuam funcionando", async () => {
+  const ok = [
+    {}, // hook do Claude Code (node, sem Origin)
+    { "Sec-Fetch-Site": "same-origin" },
+    { "Sec-Fetch-Site": "none" }, // endereco digitado na barra
+    { "Sec-Fetch-Site": "same-origin", Origin: "http://localhost:PORT" },
+  ];
+  for (const h of ok) {
+    const hh = { ...h };
+    if (hh.Origin) hh.Origin = hh.Origin.replace("PORT", require("./helpers").port());
+    const r = await req("GET", "/favicon.ico", hh);
+    assert.strictEqual(r.status, 204, JSON.stringify(hh));
+    assert.strictEqual(r.headers["access-control-allow-origin"], undefined);
+  }
+  const c = await req("POST", "/claude", { "Content-Type": "application/json" }, JSON.stringify({ hook_event_name: "SessionEnd", session_id: "zz" }));
+  assert.strictEqual(c.status, 200);
+  const h127 = await raw(["GET /favicon.ico HTTP/1.1", "Host: 127.0.0.1:4747", "Connection: close"]);
+  assert.strictEqual(h127.status, 204);
+});
