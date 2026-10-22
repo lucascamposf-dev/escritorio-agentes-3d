@@ -506,6 +506,18 @@ function handleClaude(p) {
 }
 
 // ---------- conexao com o servidor do opencode ----------
+// entrega cada evento SSE completo (varias linhas "data:" viram uma so) e devolve o resto do buffer
+function sseEvents(buf, onData) {
+  let i;
+  while ((i = buf.indexOf("\n\n")) >= 0) {
+    const block = buf.slice(0, i);
+    buf = buf.slice(i + 2);
+    const data = block.split("\n").filter((l) => l.startsWith("data:")).map((l) => l.slice(5).replace(/^ /, "")).join("\n");
+    if (data) onData(data);
+  }
+  return buf.length > 5 * 1024 * 1024 ? "" : buf; // evento sem fim: descarta
+}
+
 function connectOpencode() {
   let finished = false;
   const retry = () => {
@@ -523,15 +535,7 @@ function connectOpencode() {
       let buf = "";
       res.setEncoding("utf8");
       res.on("data", (chunk) => {
-        buf += chunk.replace(/\r/g, "");
-        let i;
-        while ((i = buf.indexOf("\n\n")) >= 0) {
-          const block = buf.slice(0, i);
-          buf = buf.slice(i + 2);
-          const line = block.split("\n").find((l) => l.startsWith("data:"));
-          if (!line) continue;
-          try { handle(JSON.parse(line.slice(5).trim())); } catch {}
-        }
+        buf = sseEvents(buf + chunk.replace(/\r/g, ""), (data) => { try { handle(JSON.parse(data)); } catch {} });
       });
       res.on("end", retry);
       res.on("error", retry);
@@ -680,5 +684,5 @@ function start() {
 
 // "node server.js" liga tudo; os testes so importam as funcoes
 if (require.main === module) start();
-module.exports = { S, server, handle, handleClaude, snapshot, setA,
+module.exports = { S, server, handle, handleClaude, snapshot, setA, sseEvents,
   sizes: () => ({ sessions: sessions.size, loggedParts: loggedParts.size, ccSubs: ccSubs.size, projects: projects.size }) };
