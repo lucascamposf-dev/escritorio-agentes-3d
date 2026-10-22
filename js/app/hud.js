@@ -10,7 +10,7 @@ export const NOMES = { plan: 'Auditor', build: 'Construtor' };
 
 const prev = { plan: 'idle', build: 'idle' };
 const inicio = { plan: 0, build: 0 };
-let ultimaDur = 0, atual = null;
+let ultimaDur = 0, atual = null, acoesHud = {};
 
 // chamado a cada estado novo (real ou do demo)
 export function mostrar(s) {
@@ -43,8 +43,39 @@ export function mostrar(s) {
     const sp = document.createElement('span'); sp.textContent = e.text; sp.title = e.text;
     li.append(tm, dot, sp); ul.appendChild(li);
   }
+  subagentes(s.subs || []);
+  skills(s.skills || [], s.now || Date.now());
   tempo();
   janelaBotoes(s.janela);
+}
+
+// cada subagente: nome do personagem, tipo e o que esta fazendo agora
+function subagentes(subs) {
+  const ul = $('subsList'); ul.textContent = '';
+  $('subsBox').hidden = !subs.length;
+  for (const x of subs.slice(0, 8)) {
+    const li = document.createElement('li'); li.className = x.status === 'done' ? 'done' : '';
+    const dot = document.createElement('i');
+    const nome = document.createElement('b'); nome.textContent = (acoesHud.nomeSub && acoesHud.nomeSub(x.id)) || x.name;
+    const tipo = document.createElement('small'); tipo.textContent = x.name;
+    const sp = document.createElement('span'); sp.textContent = x.status === 'done' ? 'pronto ✔' : (x.text || x.task || 'trabalhando…');
+    li.title = [x.task, x.text].filter(Boolean).join(' — ');
+    li.append(dot, nome, tipo, sp); ul.appendChild(li);
+  }
+}
+
+// skills usadas por ultimo; a que acabou de ser chamada fica acesa
+function skills(lista, agora) {
+  const box = $('skillsList'); box.textContent = '';
+  $('skillsBox').hidden = !lista.length;
+  for (const k of lista.slice().reverse()) {
+    const el = document.createElement('span'); el.className = 'skill' + (agora - k.t < 30000 ? ' ativa' : '');
+    el.textContent = k.name;
+    const quem = document.createElement('small'); quem.textContent = ' · ' + (k.agent === 'sub' ? k.by || 'subagente' : NOMES[k.agent] || k.agent);
+    el.appendChild(quem);
+    el.title = 'skill ' + k.name + ' — ' + new Date(k.t).toTimeString().slice(0, 8);
+    box.appendChild(el);
+  }
 }
 
 // tempo do trabalho atual (ou o do ultimo, quando ninguem trabalha)
@@ -72,6 +103,7 @@ function janelaBotoes(w) {
 
 // liga os botoes do topo; acoes que dependem da cena 3D chegam por "acoes"
 export function iniciarHud(acoes) {
+  acoesHud = acoes;
   const bSound = $('bSound');
   bSound.classList.toggle('on', config.get('som'));
   bSound.addEventListener('click', async () => { await ligarSom(!config.get('som')); bSound.classList.toggle('on', config.get('som')); });
@@ -97,6 +129,16 @@ export function iniciarHud(acoes) {
     const v = prompt('Limite de contexto do modelo, em tokens:', config.get('ctxLimite'));
     if (v && parseInt(v, 10) > 1000) { config.set('ctxLimite', parseInt(v, 10)); if (atual) mostrar(atual); }
   });
+  // minimizar: o painel vira uma pilula so com o contexto
+  const bMin = $('bMin');
+  const minimizar = (on) => {
+    document.body.classList.toggle('painel-min', on);
+    bMin.textContent = on ? '+' : '–';
+    bMin.title = on ? 'Mostrar o painel' : 'Minimizar o painel';
+  };
+  minimizar(config.get('painelMin'));
+  bMin.addEventListener('click', (e) => { e.stopPropagation(); config.set('painelMin', !config.get('painelMin')); minimizar(config.get('painelMin')); });
+  bMin.addEventListener('dblclick', (e) => e.stopPropagation());
   // clicar no log mostra/esconde a lista (modo compacto)
   document.body.classList.toggle('compacto', config.get('compacto'));
   $('painel').addEventListener('dblclick', () => { config.set('compacto', !config.get('compacto')); document.body.classList.toggle('compacto', config.get('compacto')); });

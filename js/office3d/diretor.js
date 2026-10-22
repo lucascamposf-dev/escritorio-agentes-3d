@@ -14,8 +14,13 @@ import { config } from '../app/config.js';
 
 const COR_PAPEL = { plan: '#ffb454', build: '#5aa9ff', sub: '#3ddc97', npc: '#9097a8' };
 const NOME_PAPEL = { plan: 'Auditor', build: 'Construtor' };
-const TELA = { read: 0x5aa9ff, edit: 0x4ade80, bash: 0x2bd67b, search: 0xfbbf24, web: 0x2bf6ff, think: 0xb48cff, wait: 0xfbbf24 };
-const POSE_TIPO = { read: 'ler', search: 'ler', think: 'pensar', edit: 'digitar', bash: 'digitar', web: 'digitar', wait: 'digitar' };
+const TELA = { read: 0x5aa9ff, edit: 0x4ade80, bash: 0x2bd67b, search: 0xfbbf24, web: 0x2bf6ff, think: 0xb48cff, wait: 0xfbbf24, skill: 0xff7ad9 };
+const POSE_TIPO = { read: 'ler', search: 'ler', think: 'pensar', edit: 'digitar', bash: 'digitar', web: 'digitar', wait: 'digitar', skill: 'ler' };
+// o que quem esta ajudando faz enquanto o agente trabalha (modo foco)
+const APOIO = {
+  read: 'lendo junto 📖', search: 'procurando também 🔎', edit: 'revisando o código 👀', bash: 'de olho no terminal',
+  web: 'pesquisando junto 🌐', think: 'pensando junto 💭', wait: 'esperando sua resposta', skill: 'estudando a skill 📘',
+};
 const sorteio = (lista) => lista[Math.floor(Math.random() * lista.length)];
 const entre = (a, b) => a + Math.random() * (b - a);
 
@@ -44,6 +49,8 @@ export class Diretor {
     this.ultimo = {};             // ultimo estado visto de cada agente principal
     this.bolas = [];
     this.estado = null;
+    this.foco = false;            // alguem trabalhando: todo mundo senta e trabalha junto
+    this.tipoFoco = 'think';
     this.relogioTv = 0;
     this.criarFigurantes();
     this.criarAspirador();
@@ -55,10 +62,76 @@ export class Diretor {
     const anterior = this.estado;
     this.estado = s;
     if (!anterior || anterior.session !== s.session) this.reaplicarSkins();
+    const foco = this.calcularFoco(s), mudouFoco = foco !== this.foco, tipoAntes = this.tipoFoco;
+    this.foco = foco;
+    this.tipoFoco = this.tipoDoFoco(s);
     for (const who of ['plan', 'build']) this.principal(who, s.agents[who]);
     this.subagentes(s.subs || []);
+    if (mudouFoco) {
+      // comecou ou acabou o trabalho: quem esta livre senta para ajudar (ou volta para a rotina)
+      for (const a of this.atores.values()) if (a.papel === 'npc' || this.livre(a)) this.rotina(a);
+    } else if (foco && tipoAntes !== this.tipoFoco) this.ajustarApoio();
     this.desenharTv();
   }
+
+  // ---------- modo foco: alguem trabalhando -> o escritorio inteiro trabalha junto ----------
+  calcularFoco(s) {
+    return ['plan', 'build'].some((w) => ['working', 'waiting'].includes(s.agents[w].status)) || (s.subs || []).some((x) => x.status === 'working');
+  }
+  tipoDoFoco(s) {
+    const w = ['build', 'plan'].find((k) => ['working', 'waiting'].includes(s.agents[k].status));
+    if (w) return s.agents[w].kind || 'think';
+    const sub = (s.subs || []).find((x) => x.status === 'working');
+    return (sub && sub.kind) || 'think';
+  }
+  // agente principal sem trabalho proprio (o "pronto" termina a comemoracao e chama a rotina sozinho)
+  livre(a) { return (a.papel === 'plan' || a.papel === 'build') && a.estado && a.estado.status === 'idle'; }
+
+  poseApoio(a) {
+    const k = POSE_TIPO[this.tipoFoco] || 'digitar';
+    if (a.papel === 'npc') return ['digitar', k, 'ler'][+a.id.slice(3) % 3];
+    return this.tipoFoco === 'edit' || this.tipoFoco === 'bash' ? 'ler' : k; // o outro principal revisa
+  }
+
+  // senta na mesa redonda e trabalha junto (principal no proprio lugar, figurante num lugar livre)
+  apoiar(a) {
+    this.liberarReservas(a);
+    a.atividade = '';
+    a.apoio = true;
+    const fazer = { tipo: 'fazer', pose: this.poseApoio(a), dur: Infinity, objeto: null };
+    let lugar;
+    if (a.papel === 'plan' || a.papel === 'build') { const s = ASSENTOS[LUGAR_PRINCIPAL[a.papel]]; lugar = { id: s.id, x: s.x, z: s.z, ang: s.ang, aprox: s.aprox }; }
+    else lugar = a.lugar || (a.lugar = this.assentoLivre(a));
+    if (!lugar) {
+      // mesa cheia: discute o trabalho em pe no lounge
+      const s = SPOTS.conversa[+a.id.slice(3) % SPOTS.conversa.length];
+      a.agir([{ tipo: 'ir', destino: s.aprox || s }, { tipo: 'fazer', pose: 'conversar', dur: Infinity, objeto: null }]);
+      return;
+    }
+    if (a.sentado && a.sentado.id === lugar.id) { a.fila = []; a.passo = null; a.depois([fazer]); return; }
+    a.agir([{ tipo: 'ir', destino: lugar.aprox, correr: true }, { tipo: 'sentar', lugar: { x: lugar.x, z: lugar.z, ang: lugar.ang, id: lugar.id } }, fazer]);
+  }
+
+  assentoLivre(a) {
+    for (let i = 0; i < ASSENTOS.length; i++) {
+      if (i === LUGAR_PRINCIPAL.plan || i === LUGAR_PRINCIPAL.build) continue;
+      const s = ASSENTOS[i];
+      if (this.lugares.has(s.id)) continue;
+      this.lugares.set(s.id, a.id);
+      return { id: s.id, tipo: 'mesa', i, x: s.x, z: s.z, ang: s.ang, aprox: s.aprox };
+    }
+    return null;
+  }
+
+  // o agente mudou de tipo de trabalho: quem ajuda acompanha (le, digita, pensa...)
+  ajustarApoio() {
+    for (const a of this.atores.values()) {
+      if (!a.apoio || !a.sentado || !a.passo || a.passo.tipo !== 'fazer') continue;
+      const pose = this.poseApoio(a);
+      if (a.passo.pose !== pose) { a.fila = []; a.passo = null; a.depois([{ tipo: 'fazer', pose, dur: Infinity, objeto: null }]); }
+    }
+  }
+  textoApoio(a) { return a.sentado ? APOIO[this.tipoFoco] || 'ajudando 💻' : 'indo ajudar 🏃'; }
 
   // ---------- agentes principais ----------
   skinPrincipal(who) {
@@ -88,6 +161,7 @@ export class Diretor {
     const naCadeira = a.sentado && a.sentado.id === lugar.id;
     this.liberarReservas(a);
     a.atividade = '';
+    a.apoio = false;
     a.p.setExpr('normal');
     if (st.status === 'working') {
       const fazer = { tipo: 'fazer', pose: POSE_TIPO[st.kind] || 'digitar', dur: Infinity, objeto: null };
@@ -109,6 +183,9 @@ export class Diretor {
   // ---------- rotina de quem esta livre ----------
   rotina(a) {
     if (a.papel !== 'npc' && a.estado && a.estado.status !== 'idle' && a.estado.status !== 'done') return;
+    if (this.foco) { this.apoiar(a); return; }
+    a.apoio = false;
+    if (a.papel === 'npc') this.liberarLugar(a);
     this.liberarReservas(a);
     const opcoes = [];
     for (const at of ATIVIDADES) {
@@ -377,11 +454,14 @@ export class Diretor {
     for (const who of ['plan', 'build']) {
       const a = this.atores.get(who), st = a && a.estado;
       const naCadeira = a && a.sentado && a.sentado.id === ASSENTOS[LUGAR_PRINCIPAL[who]].id;
-      const cor = !st || st.status === 'idle' || !naCadeira && st.status === 'working' ? null : st.status === 'working' ? TELA[st.kind] ?? 0xb48cff : st.status === 'waiting' ? 0xfbbf24 : st.status === 'error' ? 0xf87171 : 0x4ade80;
+      const ajuda = a && a.apoio && naCadeira && st && st.status === 'idle';
+      const cor = ajuda ? TELA[this.tipoFoco] ?? 0xb48cff : !st || st.status === 'idle' || !naCadeira && st.status === 'working' ? null : st.status === 'working' ? TELA[st.kind] ?? 0xb48cff : st.status === 'waiting' ? 0xfbbf24 : st.status === 'error' ? 0xf87171 : 0x4ade80;
       sala.telaMesa(LUGAR_PRINCIPAL[who], cor);
     }
     for (const a of this.atores.values()) {
-      if (a.papel !== 'sub' || !a.lugar || !a.sentado) continue;
+      if (!a.lugar || !a.sentado) continue;
+      if (a.papel === 'npc') { sala.telaMesa(a.lugar.i, a.apoio && a.sentado.id === a.lugar.id ? TELA[this.tipoFoco] ?? 0xb48cff : null); continue; }
+      if (a.papel !== 'sub') continue;
       const cor = TELA[a.sub && a.sub.kind] ?? 0x3ddc97;
       if (a.lugar.tipo === 'pod') sala.telaPod(a.lugar.i, cor); else sala.telaMesa(a.lugar.i, cor);
     }
@@ -397,15 +477,17 @@ export class Diretor {
   }
 
   balao(a) {
-    if (a.papel === 'npc') return { texto: '', nome: a.nome, classe: 'idle', cor: COR_PAPEL.npc };
+    if (a.papel === 'npc') return a.apoio ? { texto: this.textoApoio(a), nome: a.nome, classe: 'working', cor: COR_PAPEL.npc } : { texto: '', nome: a.nome, classe: 'idle', cor: COR_PAPEL.npc };
     if (a.papel === 'sub') {
       const s = a.sub || {};
       const texto = a.saindo || !a.sentado ? (a.atividade || 'chegando…') : (s.text || s.task || 'trabalhando…');
       return { texto, nome: `${a.nome} · ${s.name || 'subagente'}`, classe: a.saindo ? 'done' : 'working', cor: COR_PAPEL.sub };
     }
     const st = a.estado || { status: 'idle' };
+    const nome = `${NOME_PAPEL[a.papel]} · ${a.papel === 'plan' ? 'Plan' : 'Build'}`;
+    if (st.status === 'idle' && a.apoio) return { texto: this.textoApoio(a), nome, classe: 'working', cor: COR_PAPEL[a.papel] };
     const texto = st.status === 'idle' ? (a.atividade || 'descansando…') : (st.text || (st.status === 'done' ? 'pronto!' : 'trabalhando…'));
-    return { texto, nome: `${NOME_PAPEL[a.papel]} · ${a.papel === 'plan' ? 'Plan' : 'Build'}`, classe: st.status, cor: COR_PAPEL[a.papel] };
+    return { texto, nome, classe: st.status, cor: COR_PAPEL[a.papel] };
   }
 
   // ---------- telao com o painel ao vivo ----------
@@ -445,6 +527,8 @@ export class Diretor {
       y += 60;
       c.fillStyle = '#9097a8';
       c.fillText(`💰 $${(s.cost || 0).toFixed(2)}    📝 ${s.files || 0} arquivos    🏀 ${this.cestas || 0} cestas hoje`, 40, y);
+      const skills = (s.skills || []).slice().reverse().map((k) => k.name);
+      if (skills.length) { c.fillStyle = '#ff7ad9'; c.fillText(('✨ skills: ' + skills.join('  ·  ')).slice(0, 60), 40, y + 50); }
       if (s.project) { c.textAlign = 'right'; c.fillText(s.project, w - 40, h - 50); c.textAlign = 'left'; }
     });
   }

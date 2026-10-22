@@ -26,6 +26,7 @@ const S = {
   files: 0,
   subagents: 0,
   subs: [], // lista de subagentes: { id, name, task, text, kind, status: working|done, parent }
+  skills: [], // skills usadas por ultimo: { t, name, agent: plan|build|sub, by: tipo do subagente }
   log: [],
   agents: { plan: mk(), build: mk() },
   janela: { pinned: false, hidden: false, controle: process.platform === "win32" },
@@ -85,12 +86,23 @@ function subView(id, status) {
   const i = childInfo.get(id) || {};
   return { id, name: i.name || "subagente", task: i.task || "", text: i.text || "", kind: i.kind || "think", status, parent: main };
 }
+// subagente do Claude Code avisa quando termina (PostToolUse/SubagentStop): espera bem mais antes de dar como perdido
+const childTimeout = (id) => (id.startsWith("cc:") ? 10 * 60000 : 25000);
+
+// ---------- skills ----------
+function addSkill(name, agent, by) {
+  name = cut(name, 40);
+  if (!name) return;
+  S.skills = S.skills.filter((k) => !(k.name === name && k.agent === agent && k.by === (by || "")));
+  S.skills.push({ t: Date.now(), name, agent, by: by || "" });
+  if (S.skills.length > 6) S.skills.shift();
+}
 
 // ---------- estado e envio ----------
 let pending = null;
 function snapshot() {
   const now = Date.now();
-  for (const [k, t] of childActive) if (now - t > 25000) endChild(k);
+  for (const [k, t] of childActive) if (now - t > childTimeout(k)) endChild(k);
   for (const [k, t] of childDone) if (now - t > 8000) childDone.delete(k);
   if (childInfo.size > 60) {
     for (const k of childInfo.keys()) {
@@ -145,8 +157,9 @@ function work(text, kind) {
   if (S.agents[main].status === "waiting") return; // espera a resposta da permissao
   setA(main, "working", text, kind);
 }
-function finish() {
-  for (const k of [...childActive.keys()]) endChild(k);
+// keepBg: subagentes em segundo plano continuam trabalhando depois que o agente principal para
+function finish(keepBg) {
+  for (const k of [...childActive.keys()]) if (!(keepBg && (childInfo.get(k) || {}).bg)) endChild(k);
   for (const w of ["plan", "build"]) {
     const a = S.agents[w];
     if (a.status === "working") setA(w, "done", "pronto!", "think");
@@ -406,6 +419,7 @@ function ccDescribe(name, input) {
     case "WebFetch": case "WebSearch": return ["pesquisando na web", "web"];
     case "Task": case "Agent": return ["chamando subagente" + (input.description ? ": " + cut(input.description, 30) : ""), "think"];
     case "TodoWrite": case "TaskCreate": case "TaskUpdate": return ["organizando tarefas", "think"];
+    case "Skill": return ["usando a skill " + cut(input.skill || input.command || input.name || "", 30), "skill"];
     default:
       if (String(name).startsWith("mcp__")) return ["usando " + cut(String(name).split("__").slice(1).join(" "), 30), "web"];
       return [cut(name || "trabalhando", 30), "think"];
@@ -417,7 +431,9 @@ function ccChild(p) {
   if (!p.agent_id) return null;
   if (ccSubs.has(p.agent_id)) return ccSubs.get(p.agent_id);
   const used = new Set(ccSubs.values());
-  const free = [...childActive.keys()].reverse().find((k) => k.startsWith("cc:") && !used.has(k));
+  const livres = [...childActive.keys()].reverse().filter((k) => k.startsWith("cc:") && !used.has(k));
+  // de preferencia um subagente do mesmo tipo (varios podem ter sido chamados de uma vez)
+  const free = livres.find((k) => (childInfo.get(k) || {}).name === p.agent_type) || livres[0];
   const id = free || "cc:" + p.agent_id;
   ccSubs.set(p.agent_id, id);
   cap(ccSubs, 100);
@@ -441,36 +457,44 @@ function handleClaude(p) {
       push();
       break;
 
-    case "UserPromptSubmit":
+    case "UserPromptSubmit": {
       if (p.session_id && !p.agent_id) S.session = p.session_id;
       wakeWindow(true);
       main = p.permission_mode === "plan" ? "plan" : "build";
       if (S.agents[main].status === "waiting") S.agents[main].status = "working";
-      work("pensando…", "think");
-      addLog("novo pedido");
+      // "/nome-da-skill ..." digitado pelo usuario (so o nome sai do prompt)
+      const slash = /^\/([\w:-]+)/.exec(String(p.prompt || "").trim());
+      if (slash) { addSkill(slash[1], main); work("usando a skill " + cut(slash[1], 30), "skill"); }
+      else work("pensando…", "think");
+      addLog(slash ? "novo pedido: /" + cut(slash[1], 30) : "novo pedido");
       break;
+    }
 
     case "PreToolUse": {
       const [text, kind] = ccDescribe(p.tool_name, p.tool_input);
+      const skill = p.tool_name === "Skill" && text.slice("usando a skill ".length);
       if (p.tool_name === "ExitPlanMode") main = "plan";
+      const child = ccChild(p); // antes de criar um subagente novo: ele nao pode ser confundido com o pai
       if (p.tool_name === "Task" || p.tool_name === "Agent") {
         const id = "cc:" + (p.tool_use_id || Date.now());
         const i = p.tool_input || {};
-        childInfo.set(id, { name: i.subagent_type || "subagente", task: cut(i.description || i.prompt || "", 60), text: "começando…", kind: "think" });
+        childInfo.set(id, { name: i.subagent_type || "subagente", task: cut(i.description || i.prompt || "", 60), text: "começando…", kind: "think", bg: !!i.run_in_background });
         touchChild(id);
         addLog(text);
-        work(text, kind);
-        break;
+        if (!child) { work(text, kind); break; }
       }
-      const child = ccChild(p);
       if (child) {
+        // evento de dentro de um subagente: atualiza so o subagente (o principal segue esperando por ele)
         const ci = childInfo.get(child) || {};
-        childInfo.set(child, { ...ci, text, kind });
+        if (p.tool_name !== "Task" && p.tool_name !== "Agent") childInfo.set(child, { ...ci, text, kind });
         touchChild(child);
-        addLog("↳ " + text);
-        work("↳ " + text, kind);
+        if (skill) addSkill(skill, "sub", ci.name);
+        addLog("↳ " + (ci.name || "subagente") + ": " + text);
+        lastSignal = Date.now();
+        push();
         break;
       }
+      if (skill) addSkill(skill, main);
       addLog(text);
       if (S.agents[main].status === "waiting") S.agents[main].status = "working";
       work(text, kind);
@@ -483,8 +507,21 @@ function handleClaude(p) {
       if (["Edit", "MultiEdit", "Write", "NotebookEdit"].includes(p.tool_name) && (i.file_path || i.notebook_path)) addEdited(i.file_path || i.notebook_path);
       if (p.tool_name === "Task" || p.tool_name === "Agent") {
         const id = "cc:" + p.tool_use_id;
-        endChild(id, true);
-        for (const [k, v] of ccSubs) if (v === id) ccSubs.delete(k);
+        const r = JSON.stringify(p.tool_response || "").slice(0, 4000);
+        const ci = childInfo.get(id);
+        // em segundo plano a ferramenta volta na hora: o subagente segue trabalhando ate o SubagentStop
+        if (ci && (ci.bg || /async|background|launched/i.test(r))) {
+          ci.bg = true;
+          const m = /agent_?id\W{0,4}([\w-]{6,})/i.exec(r);
+          if (m && !ccSubs.has(m[1])) ccSubs.set(m[1], id);
+          touchChild(id);
+        } else {
+          endChild(id, true);
+          for (const [k, v] of ccSubs) if (v === id) ccSubs.delete(k);
+        }
+      } else {
+        const child = ccChild(p);
+        if (child) touchChild(child);
       }
       if (S.agents[main].status === "waiting") S.agents[main].status = "working";
       ccUsage(p.transcript_path);
@@ -508,8 +545,18 @@ function handleClaude(p) {
       break;
     }
 
+    case "SubagentStart": {
+      const id = ccChild(p);
+      if (id) touchChild(id);
+      push();
+      break;
+    }
+
     case "SubagentStop": {
-      const id = p.agent_id && ccSubs.get(p.agent_id);
+      const used = new Set(ccSubs.values());
+      // sem nenhum evento de dentro dele: encerra o subagente em segundo plano mais antigo do mesmo tipo
+      const id = (p.agent_id && ccSubs.get(p.agent_id)) ||
+        [...childActive.keys()].find((k) => k.startsWith("cc:") && !used.has(k) && (childInfo.get(k) || {}).bg && childInfo.get(k).name === p.agent_type);
       if (id) { endChild(id, true); ccSubs.delete(p.agent_id); }
       push();
       break;
@@ -527,9 +574,10 @@ function handleClaude(p) {
     }
 
     case "Stop":
+      if (p.agent_id) break; // Stop vindo de dentro de um subagente nao encerra o principal
       ccUsage(p.transcript_path);
-      ccSubs.clear();
-      finish();
+      for (const [k, v] of ccSubs) if (!childActive.has(v) || !(childInfo.get(v) || {}).bg) ccSubs.delete(k);
+      finish(true);
       break;
 
     case "SessionEnd":

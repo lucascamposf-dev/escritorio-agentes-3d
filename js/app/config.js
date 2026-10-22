@@ -9,6 +9,7 @@ const PADRAO = {
   som: false,
   fixar: false,           // janela sempre por cima
   compacto: false,
+  painelMin: false,       // painel do contexto minimizado
   ctxLimite: 200000,
   // skin de cada personagem: 'aleatorio' | id de uma skin pronta | { custom: {...} }
   skins: {

@@ -46,9 +46,13 @@ Claude Code (hooks) --claude-hook.js--POST /claude-->        |
 
 ### Modelo de estado (server.js)
 - Agentes principais fixos `plan` (Auditor) e `build` (Construtor); `main` é o ativo.
-- Status `idle | working | waiting | error | done`; `kind` `think | read | edit | bash | search | web | wait`.
+- Status `idle | working | waiting | error | done`; `kind` `think | read | edit | bash | search | web | wait | skill`.
 - `S.session` = sessão principal atual (personagens aleatórios mudam a cada sessão nova).
-- Subagentes: `S.subs` (`working`/`done`); custo e arquivos contados por projeto.
+- Subagentes: `S.subs` (`working`/`done`); custo e arquivos contados por projeto. Eventos de dentro de um
+  subagente (`agent_id`) so mudam o subagente; os em segundo plano (`bg`) seguem depois do `Stop` ate o `SubagentStop`.
+- Skills: `S.skills` (ultimas 6: ferramenta `Skill` ou `/nome` digitado no prompt), no painel e no telao.
+- Modo foco (`diretor.js`): com alguem trabalhando (principal ou subagente), quem esta livre (o outro principal e os
+  figurantes) senta na mesa redonda e trabalha junto (`apoiar()`); sem trabalho, voltam a rotina.
 
 ## Comandos
 

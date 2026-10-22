@@ -231,3 +231,39 @@ test("a pagina se recarrega sozinha quando o servidor muda de versao", { skip },
   await page.until(`window.__marca === undefined && window.ESC && ESC.conexao.versao === ${JSON.stringify(app.S.versao)}`);
   app.S.versao = antiga;
 });
+
+test("modo foco: com o agente trabalhando todos sentam e trabalham; painel minimiza e lista subagentes e skills", { skip }, async () => {
+  const d = "ESC.escritorio.diretor";
+  await abrir("try { const c = JSON.parse(localStorage.getItem('escritorio.config')); delete c.painelMin; localStorage.setItem('escritorio.config', JSON.stringify(c)); } catch {}");
+  await page.until(`ESC.pronto === true`);
+  await page.eval(`void Object.assign(ESC.escritorio.engine, { escala: 3, passoMax: 0.4 })`);
+  app.handleClaude({ hook_event_name: "UserPromptSubmit", session_id: "foco" });
+  app.handleClaude({ hook_event_name: "PreToolUse", session_id: "foco", tool_name: "Skill", tool_input: { skill: "frontend-design" } });
+  app.handleClaude({ hook_event_name: "PreToolUse", session_id: "foco", tool_name: "Agent", tool_use_id: "f1", tool_input: { subagent_type: "Explore", description: "achar estilos" } });
+  app.handleClaude({ hook_event_name: "PreToolUse", session_id: "foco", agent_id: "ag-f1", agent_type: "Explore", tool_name: "Grep", tool_input: { pattern: "painel" } });
+  // o Auditor (livre) e os 3 figurantes sentam na mesa redonda para ajudar
+  await page.until(`${d}.foco === true`);
+  await page.until(`(() => { const as = ['plan', 'npc0', 'npc1', 'npc2'].map(id => ${d}.atores.get(id)); return as.every(a => a.apoio && a.sentado && String(a.sentado.id).startsWith('mesa')); })()`, 60000);
+  assert.match(await page.eval(`document.querySelector('.balao[data-id="npc0"] .txt').textContent`), /junto|revisando|terminal|skill|ajudando/);
+  // painel: subagente com o que esta fazendo, skill acesa
+  await page.until(`document.querySelector('#subsList li span')?.textContent === 'procurando painel'`);
+  assert.match(await page.eval(`document.querySelector('#skillsList .skill.ativa').textContent`), /frontend-design/);
+  await page.eval(`void Object.assign(ESC.escritorio.engine, { escala: 1, passoMax: 0.1 })`);
+  await print("foco-todos-trabalhando");
+  // minimizar: so a pilula do contexto fica; volta ao clicar de novo (e a escolha fica salva)
+  await page.eval(`document.getElementById('bMin').click()`);
+  assert.strictEqual(await page.eval(`document.body.classList.contains('painel-min') && getComputedStyle(document.getElementById('corpo')).display`), "none");
+  assert.ok(await page.eval(`document.getElementById('painel').getBoundingClientRect().height < 50`));
+  assert.strictEqual(await page.eval(`JSON.parse(localStorage.getItem('escritorio.config')).painelMin`), true);
+  await print("foco-painel-minimizado");
+  await page.eval(`document.getElementById('bMin').click()`);
+  assert.strictEqual(await page.eval(`document.body.classList.contains('painel-min')`), false);
+  // acabou o trabalho: os figurantes levantam e liberam a mesa
+  await page.eval(`void Object.assign(ESC.escritorio.engine, { escala: 3, passoMax: 0.4 })`);
+  app.handleClaude({ hook_event_name: "PostToolUse", session_id: "foco", tool_name: "Agent", tool_use_id: "f1", tool_response: { content: "ok" } });
+  app.handleClaude({ hook_event_name: "Stop", session_id: "foco" });
+  await page.until(`${d}.foco === false && !${d}.atores.get('npc0').apoio`);
+  await page.until(`![...${d}.lugares.values()].some(v => v.startsWith('npc'))`);
+  assert.deepStrictEqual(limpo(), []);
+  await req("GET", "/set?agent=build&status=idle");
+});

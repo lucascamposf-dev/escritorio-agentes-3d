@@ -50,8 +50,27 @@ button.on { border-color: var(--ok); color: var(--ok) }
 #painel { position: fixed; left: 8px; bottom: 8px; width: min(360px, calc(100vw - 16px)); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px }
 body.compacto #painel #log { display: none }
 .ctx { cursor: pointer }
-.ctxh { display: flex; justify-content: space-between; color: var(--mut); font-size: 12px; margin-bottom: 5px }
+.ctxh { display: flex; align-items: center; gap: 8px; color: var(--mut); font-size: 12px; margin-bottom: 5px }
+.ctxh span { margin-right: auto }
 .ctxh b { color: var(--ink) }
+#bMin { padding: 0 7px; line-height: 18px; border-radius: 7px; font-size: 13px }
+/* minimizado: so uma pilula com o contexto, para nao cobrir os personagens */
+body.painel-min #painel { width: auto; padding: 6px 8px 6px 12px }
+body.painel-min #painel .ctxh { margin: 0 }
+body.painel-min #painel .bar, body.painel-min #corpo { display: none }
+#corpo { display: flex; flex-direction: column; gap: 8px; max-height: 45vh; overflow: auto }
+.bloco h5 { margin: 0 0 4px; font-size: 11px; font-weight: 600; color: var(--mut); text-transform: uppercase; letter-spacing: .06em }
+#subsList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: 12px }
+#subsList li { display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden }
+#subsList li i { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--sub); box-shadow: 0 0 6px var(--sub) }
+#subsList li.done { opacity: .5 } #subsList li.done i { background: var(--mut); box-shadow: none }
+#subsList b { flex: none; color: var(--sub); font-weight: 600 }
+#subsList small { flex: none; color: var(--mut) }
+#subsList span { overflow: hidden; text-overflow: ellipsis; color: var(--ink) }
+#skillsList { display: flex; flex-wrap: wrap; gap: 4px }
+.skill { background: rgba(255, 122, 217, .1); border: 1px solid rgba(255, 122, 217, .3); color: #ffb3ea; border-radius: 999px; padding: 1px 8px; font-size: 11.5px; white-space: nowrap }
+.skill small { color: var(--mut) }
+.skill.ativa { border-color: #ff7ad9; box-shadow: 0 0 8px rgba(255, 122, 217, .45) }
 .bar { height: 7px; border-radius: 5px; background: rgba(0, 0, 0, .35); overflow: hidden }
 .bar i { display: block; height: 100%; width: 0; background: var(--ok); transition: width .5s, background .5s }
 .bar.mid i { background: var(--warn) } .bar.hot i { background: var(--err) }

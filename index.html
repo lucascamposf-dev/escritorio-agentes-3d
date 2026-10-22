@@ -35,10 +35,14 @@
 
 <section id="painel" class="vidro">
   <div class="ctx" id="ctx" title="Clique para ajustar o limite de contexto do modelo">
-    <div class="ctxh"><span>Contexto</span><b id="ctxTxt">0 / 200K (0%)</b></div>
+    <div class="ctxh"><span>Contexto</span><b id="ctxTxt">0 / 200K (0%)</b><button id="bMin" title="Minimizar o painel">&#8211;</button></div>
     <div class="bar" id="ctxBar"><i id="ctxFill"></i></div>
   </div>
-  <ul id="log"></ul>
+  <div id="corpo">
+    <div id="subsBox" class="bloco" hidden><h5>&#129302; Subagentes</h5><ul id="subsList"></ul></div>
+    <div id="skillsBox" class="bloco" hidden><h5>&#10024; Skills</h5><div id="skillsList"></div></div>
+    <ul id="log"></ul>
+  </div>
 </section>
 
 <section id="detalhe" class="vidro" hidden></section>

@@ -18,6 +18,7 @@ iniciarHud({
   camera: (m) => escritorio && escritorio.engine.setCamera(m),
   qualidade: (q) => escritorio && escritorio.engine.setQualidade(q),
   aparencia: () => import('./app/aparencia.js').then((m) => m.alternar(escritorio)).catch((e) => console.error(e)),
+  nomeSub: (id) => { const a = escritorio && escritorio.diretor.atores.get('sub:' + id); return a ? a.nome : ''; },
   demo: () => rodarDemo(exibir, () => exibir(conexao.ultimo || snap(quieto(), quieto(), { oc: false, project: '' }))),
 });
 

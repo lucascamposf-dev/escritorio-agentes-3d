@@ -15,7 +15,7 @@ const MARK = "claude-hook.js";
 
 const EVENTS = [
   "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
-  "PermissionRequest", "Notification", "SubagentStop", "PreCompact", "Stop", "StopFailure", "SessionEnd",
+  "PermissionRequest", "Notification", "SubagentStart", "SubagentStop", "PreCompact", "Stop", "StopFailure", "SessionEnd",
 ];
 const WITH_MATCHER = new Set(["PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionRequest"]);
 
