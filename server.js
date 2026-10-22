@@ -102,9 +102,10 @@ function addLog(text) {
   S.log.push({ t: Date.now(), agent: main, text });
   if (S.log.length > 8) S.log.shift();
 }
+const isAgent = (w) => w === "plan" || w === "build";
 function setA(who, status, text, kind) {
+  if (!isAgent(who)) return false; // "__proto__", "constructor"... viriam do Object.prototype
   const a = S.agents[who];
-  if (!a) return false;
   if (status === "working" && (a.status === "idle" || a.status === "done" || a.status === "error")) a.since = Date.now();
   if (status === "waiting" && !a.since) a.since = Date.now();
   a.status = status;
