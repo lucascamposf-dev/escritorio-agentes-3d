@@ -58,7 +58,9 @@ async function launch() {
   };
   page.close = async () => {
     try { ws.close(); } catch {}
-    proc.kill();
+    // no Windows o kill() so fecha o processo principal; taskkill /T leva os filhos junto
+    if (process.platform === "win32") { try { require("child_process").execFileSync("taskkill", ["/pid", String(proc.pid), "/T", "/F"], { stdio: "ignore" }); } catch {} }
+    else proc.kill();
     await new Promise((r) => setTimeout(r, 300));
     try { fs.rmSync(prof, { recursive: true, force: true }); } catch {}
   };
