@@ -47,6 +47,9 @@ Claude Code (hooks) --claude-hook.js--POST /claude-->
 ## Comandos
 
 - Rodar: `node server.js` (ou `npm start`) → http://localhost:4747. Node 22+ (testado no v24).
+- Local do projeto: `E:\escritorio` (o disco C: desta máquina vive lotado). Arquivos temporários
+  (downloads, perfis do Chrome dos testes) vão para `E:\temp\escritorio`: rode os testes com
+  `TEMP=E:\temp\escritorio TMP=E:\temp\escritorio npm test`.
 - Testes: `npm test`. O teste de navegador é pulado se não houver Chrome/Edge (`CHROME_PATH`
   aponta outro). O teste do 3D leva ~20 s (o robô anda pela sala).
 - Ligar ao Claude Code: `node instalar-claude.js` (remover: `--remover`).
