@@ -7,7 +7,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
-const VISTA = { pos: new THREE.Vector3(2, 15.5, 17.5), alvo: new THREE.Vector3(0, 0.6, 0) };
+const VISTA = { pos: new THREE.Vector3(1.2, 17.5, 19.5), alvo: new THREE.Vector3(0.4, 0, 0.6) };
 
 export class Engine {
   constructor(host, { qualidade = 'alta', camera = 'seguir' } = {}) {
@@ -97,6 +97,7 @@ export class Engine {
     this.renderer.toneMappingExposure = l.exposicao ?? 1;
     this.scene.environmentIntensity = l.ambiente ?? 0.6;
     this.bloom.strength = l.bloom ?? 0.3;
+    this.bloom.threshold = l.limiar ?? 0.86; // so o que passa desse brilho "vaza" luz
     this.scene.background = new THREE.Color(l.fundo ?? 0x0e1016);
   }
 

@@ -66,3 +66,19 @@ test("demo mostra estados de mentira e volta ao estado real", { skip }, async ()
   assert.strictEqual(app.S.agents.plan.status, "idle", "o demo nao pode mexer no servidor");
   assert.deepStrictEqual(limpo(), []);
 });
+
+test("os 5 temas montam sem erro (e liberam a GPU ao trocar)", { skip }, async () => {
+  await page.open(url);
+  await page.until(`ESC.pronto === true`, 15000);
+  const ids = await page.eval(`import('/js/office3d/temas/index.js').then(m => m.TEMAS.map(t => t.id))`);
+  assert.strictEqual(ids.length, 5);
+  let mem0 = null;
+  for (const id of [...ids, ids[0]]) {
+    await page.eval(`ESC.escritorio.trocarTema('${id}')`);
+    await new Promise((r) => setTimeout(r, 600));
+    await print("tema-" + id);
+    const mem = await page.eval(`JSON.stringify(ESC.escritorio.engine.renderer.info.memory)`);
+    if (id === ids[0]) { if (mem0) assert.strictEqual(mem, mem0, "trocar de tema deixou lixo na GPU"); else mem0 = mem; }
+  }
+  assert.deepStrictEqual(limpo(), []);
+});
