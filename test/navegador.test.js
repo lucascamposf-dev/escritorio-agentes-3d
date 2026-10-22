@@ -220,3 +220,14 @@ test("baloes nao se sobrepoem e subagentes tem nomes diferentes", { skip }, asyn
   assert.strictEqual(cruzam, false, "os baloes do Auditor e do Construtor estao um em cima do outro: " + info);
   for (let i = 0; i < 4; i++) await req("GET", `/sub?id=n${i}&status=done`);
 });
+
+test("a pagina se recarrega sozinha quando o servidor muda de versao", { skip }, async () => {
+  await abrir();
+  await page.until(`ESC.pronto === true`);
+  await page.eval(`window.__marca = 1`);
+  const antiga = app.S.versao;
+  app.S.versao = "nova-" + Date.now();
+  await req("GET", "/set?agent=plan&status=idle"); // provoca um envio do estado
+  await page.until(`window.__marca === undefined && window.ESC && ESC.conexao.versao === ${JSON.stringify(app.S.versao)}`);
+  app.S.versao = antiga;
+});

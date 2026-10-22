@@ -16,6 +16,8 @@ export function conectar() {
   es.onmessage = (e) => {
     let s;
     try { s = JSON.parse(e.data); } catch { return; }
+    // o servidor foi atualizado/reiniciado: recarrega a pagina para pegar a versao nova
+    if (s.versao) { if (conexao.versao && conexao.versao !== s.versao) { location.reload(); return; } conexao.versao = s.versao; }
     conexao.ultimo = s;
     if (!conexao.conectado) { conexao.conectado = true; avisar(); }
     for (const f of ouvintes) f(s);

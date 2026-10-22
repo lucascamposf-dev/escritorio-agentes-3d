@@ -18,6 +18,7 @@ const S = {
   oc: false,
   cc: false, // Claude Code ativo
   project: "",
+  versao: String(Date.now()), // muda a cada vez que o servidor liga: a pagina se recarrega sozinha
   session: "", // sessao principal atual (os personagens aleatorios mudam a cada sessao nova)
   model: "",
   ctxTokens: 0,
