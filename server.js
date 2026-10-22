@@ -10,7 +10,8 @@ const path = require("path");
 
 const PORT = process.env.PORT || 4747;
 const OC_PORT = process.env.OC_PORT || 4096;
-const LOG = path.join(__dirname, "events.log");
+const LOG = process.env.ESCRITORIO_LOG_FILE || path.join(__dirname, "events.log");
+const DEBUG_LOG = process.env.ESCRITORIO_LOG === "1";
 
 const mk = () => ({ status: "idle", text: "", kind: "think", since: 0, until: 0 });
 const S = {
@@ -49,7 +50,8 @@ const pick = (name) => {
   return null; // subagentes (explore, general...) nao trocam o agente principal
 };
 const isChild = (sid) => !!(sid && sessions.get(sid) && sessions.get(sid).parentID);
-const note = (line) => { try { fs.appendFileSync(LOG, line + "\n"); } catch {} };
+// log de depuracao (grava prompts e comandos): so com ESCRITORIO_LOG=1
+const note = (line) => { if (DEBUG_LOG) try { fs.appendFileSync(LOG, line + "\n"); } catch {} };
 
 // ---------- subagentes ----------
 function touchChild(sid) {
