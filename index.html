@@ -986,12 +986,15 @@ const P = {
     es.onerror = () => { connected = false; status(last); };
   } else { conn.textContent = 'abra por http://localhost:4747'; }
 
-  // clique em um personagem: alterna trabalhando/parado (para testar)
+  // clique em um personagem: alterna trabalhando/parado so na tela, durante o demo ou sem servidor
+  // (nunca mexe no estado real: um clique sem querer trocava o agente ativo para todo mundo)
   for (const who of ['plan','build']) cards[who].addEventListener('click', () => {
+    if (connected && !demo) return;
     const a = cur && cur.agents[who];
     const next = a && a.status === 'working' ? 'idle' : 'working';
-    if (connected) fetch(`/set?agent=${who}&status=${next}&text=${encodeURIComponent('teste manual')}`).catch(() => {});
-    else { const s = cur || snap(quiet(), quiet()); s.agents[who] = next === 'idle' ? quiet() : A('working', 'teste manual', 'edit'); apply(s); }
+    const s = cur ? { ...cur, agents: { ...cur.agents } } : snap(quiet(), quiet());
+    s.agents[who] = next === 'idle' ? quiet() : A('working', 'teste manual', 'edit');
+    apply(s);
   });
   apply(snap(quiet(), quiet(), { oc: false, project: '', model: '', ctxTokens: 0 }));
   window.__apply = apply; // usado nos testes

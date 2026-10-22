@@ -50,3 +50,20 @@ test("modo 3D liga, mostra o robo do subagente, libera a GPU e nao da erro", { s
   assert.strictEqual(await page.eval(mem), memAntes, "geometrias/texturas do robo ficaram na GPU");
   assert.deepStrictEqual(page.errors, []);
 });
+
+test("clicar no personagem nao altera o estado real; no demo so muda a tela", { skip }, async () => {
+  await req("GET", "/set?agent=plan&status=idle");
+  await page.open(url);
+  await page.until(`document.getElementById('conn').textContent.includes('aguardando')`);
+  await page.eval(`document.querySelector('[data-who=plan]').click()`);
+  await new Promise((r) => setTimeout(r, 400));
+  assert.ok(!page.requests.includes("/set"), "a pagina chamou /set");
+  assert.strictEqual(app.S.agents.plan.status, "idle");
+  assert.strictEqual(await page.eval(`document.querySelector('[data-who=plan]').dataset.status`), "idle");
+
+  await page.eval(`document.getElementById('bDemo').click()`); // 1o passo do demo: Auditor lendo
+  await page.eval(`document.querySelector('[data-who=build]').click()`);
+  assert.strictEqual(await page.eval(`document.querySelector('[data-who=build]').dataset.status`), "working");
+  assert.ok(!page.requests.includes("/set"), "a pagina chamou /set no demo");
+  assert.strictEqual(app.S.agents.build.status, "idle");
+});
