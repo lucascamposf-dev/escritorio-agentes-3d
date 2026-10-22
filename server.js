@@ -654,7 +654,7 @@ function route(req, res) {
     });
   }
 
-    if (url.pathname === "/three.min.js") {
+  if (url.pathname === "/three.min.js") {
     const f = path.join(__dirname, "three.min.js");
     if (!fs.existsSync(f)) { res.writeHead(404); return res.end(); }
     res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "max-age=86400" });
