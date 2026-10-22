@@ -31,8 +31,7 @@ let main = "build";
 let lastSignal = 0;
 const clients = new Set();
 const sessions = new Map(); // sessionID -> { parentID }
-const costs = new Map(); // messageID -> cost
-const edited = new Set(); // arquivos editados
+const projects = new Map(); // projeto -> { costs: messageID -> custo, costBase, edited: arquivos editados }
 const childActive = new Map(); // sessionID de subagente -> ultimo sinal
 const childInfo = new Map(); // sessionID de subagente -> { name, task, text, kind }
 const childDone = new Map(); // sessionID de subagente -> quando terminou (fica visivel por alguns segundos)
@@ -50,6 +49,22 @@ const pick = (name) => {
   return null; // subagentes (explore, general...) nao trocam o agente principal
 };
 const isChild = (sid) => !!(sid && sessions.get(sid) && sessions.get(sid).parentID);
+// tira os itens mais antigos (Map/Set guardam a ordem de insercao)
+const cap = (col, n) => { while (col.size > n) col.delete(col.keys().next().value); };
+
+// ---------- custo e arquivos: contados por projeto ----------
+function proj() {
+  let p = projects.get(S.project);
+  if (!p) { p = { costs: new Map(), costBase: 0, edited: new Set() }; projects.set(S.project, p); cap(projects, 30); }
+  return p;
+}
+function addCost(id, cost) {
+  const p = proj();
+  p.costs.set(id, cost);
+  // mensagens antigas ja tem o custo final: entram num total fixo
+  while (p.costs.size > 300) { const [k, v] = p.costs.entries().next().value; p.costBase += v; p.costs.delete(k); }
+}
+function addEdited(file) { const p = proj(); p.edited.add(file); cap(p.edited, 2000); }
 // log de depuracao (grava prompts e comandos): so com ESCRITORIO_LOG=1
 const note = (line) => { if (DEBUG_LOG) try { fs.appendFileSync(LOG, line + "\n"); } catch {} };
 
@@ -85,8 +100,9 @@ function snapshot() {
     ...[...childActive.keys()].map((id) => subView(id, "working")),
     ...[...childDone.keys()].map((id) => subView(id, "done")),
   ];
-  S.files = edited.size;
-  S.cost = [...costs.values()].reduce((a, b) => a + b, 0);
+  const p = proj();
+  S.files = p.edited.size;
+  S.cost = [...p.costs.values()].reduce((a, b) => a + b, p.costBase);
   S.now = now;
   return S;
 }
@@ -205,7 +221,7 @@ function handle(ev) {
       if (a) main = a;
       if (i.role === "assistant") {
         if (i.modelID) S.model = i.modelID;
-        if (typeof i.cost === "number" && i.id) costs.set(i.id, i.cost);
+        if (typeof i.cost === "number" && i.id) addCost(i.id, i.cost);
         const tk = i.tokens;
         if (tk) {
           const sum = (tk.input || 0) + (tk.output || 0) + (tk.reasoning || 0) + ((tk.cache && tk.cache.read) || 0) + ((tk.cache && tk.cache.write) || 0);
@@ -228,7 +244,7 @@ function handle(ev) {
         const st = part.state && part.state.status;
         if (st === "completed" && isEditTool(part.tool)) {
           const f = (part.state.input && (part.state.input.filePath || part.state.input.path)) || "";
-          if (f) edited.add(f);
+          if (f) addEdited(f);
         }
         const id = part.id || part.callID;
         if (id && !loggedParts.has(id)) { loggedParts.add(id); addLog((child ? "↳ " : "") + text); }
@@ -427,7 +443,7 @@ function handleClaude(p) {
     case "PostToolUse":
     case "PostToolUseFailure": {
       const i = p.tool_input || {};
-      if (["Edit", "MultiEdit", "Write", "NotebookEdit"].includes(p.tool_name) && (i.file_path || i.notebook_path)) edited.add(i.file_path || i.notebook_path);
+      if (["Edit", "MultiEdit", "Write", "NotebookEdit"].includes(p.tool_name) && (i.file_path || i.notebook_path)) addEdited(i.file_path || i.notebook_path);
       if (p.tool_name === "Task" || p.tool_name === "Agent") {
         const id = "cc:" + p.tool_use_id;
         endChild(id, true);
