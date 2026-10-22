@@ -35,14 +35,18 @@ test("uma conexao /events por aba, e o 3D recebe os subagentes por ela", { skip 
   await req("GET", "/sub?id=nav1&status=done");
 });
 
-test("modo 3D liga, mostra o robo do subagente e nao da erro", { skip }, async () => {
+test("modo 3D liga, mostra o robo do subagente, libera a GPU e nao da erro", { skip }, async () => {
   await page.open(url, "try { localStorage.setItem('office.v3d', '1'); } catch {}");
   await page.until(`window.O3 && window.O3.ready`, 15000);
   const robos = () => page.eval(`O3.scene.children.filter(o => o.isGroup && o.children.some(c => c.isSprite)).length`);
   const antes = await robos(); // os 2 agentes principais
+  const mem = `JSON.stringify(O3.renderer.info.memory)`;
+  const memAntes = await page.eval(mem);
   await req("GET", "/sub?id=nav3d&name=explore&text=procurando");
   await page.until(`O3.scene.children.filter(o => o.isGroup && o.children.some(c => c.isSprite)).length === ${antes + 1}`);
   await req("GET", "/sub?id=nav3d&status=done");
   await page.until(`O3.scene.children.filter(o => o.isGroup && o.children.some(c => c.isSprite)).length === ${antes}`, 25000);
+  await new Promise((r) => setTimeout(r, 300)); // alguns quadros depois
+  assert.strictEqual(await page.eval(mem), memAntes, "geometrias/texturas do robo ficaram na GPU");
   assert.deepStrictEqual(page.errors, []);
 });

@@ -541,6 +541,13 @@ const P = {
         return b;
       };
 
+      // cada robo cria geometrias, materiais e a textura do balao: libera tudo da GPU quando ele sai
+      // (a geometria do Sprite e compartilhada pelo three.js, nao pode ser descartada)
+      const freeBot = g => g.traverse(o => {
+        if (o.geometry && !o.isSprite) o.geometry.dispose();
+        if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); }
+      });
+
       const turnTo = (b, ang, dt) => {
         let d = ang - b.g.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d));
         b.g.rotation.y += d * Math.min(1, dt * 10);
@@ -606,7 +613,7 @@ const P = {
           } else if (b.phase === 'gone') {
             const k = Math.max(0, 1 - b.age / 0.3);
             b.g.scale.setScalar(Math.max(0.001, k));
-            if (k <= 0) { scene.remove(b.g); bots.delete(id); continue; }
+            if (k <= 0) { scene.remove(b.g); freeBot(b.g); bots.delete(id); continue; }
           }
 
           // animacao de caminhada
