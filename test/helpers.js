@@ -16,7 +16,7 @@ function close() {
 // devolve { status, headers, body } ou { error }
 function raw(lines, body = "") {
   return new Promise((ok) => {
-    const c = net.connect(port, "127.0.0.1", () => c.end(lines.join("\r\n") + "\r\n\r\n" + body));
+    const c = net.connect(port, "127.0.0.1", () => c.write(lines.join("\r\n") + "\r\n\r\n" + body));
     let data = "";
     c.setTimeout(1500, () => c.destroy());
     c.on("data", (d) => (data += d));

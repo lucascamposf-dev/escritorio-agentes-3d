@@ -532,7 +532,14 @@ function tick() {
 
 // ---------- HTTP ----------
 const server = http.createServer((req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host}`);
+  // um erro num request nunca pode derrubar o servidor inteiro
+  try { route(req, res); }
+  catch (e) { try { if (!res.headersSent) res.writeHead(500); res.end(); } catch {} }
+});
+
+function route(req, res) {
+  // base fixa: o cabecalho Host vem de fora e pode ser invalido
+  const url = new URL(req.url, "http://localhost");
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "content-type");
   if (req.method === "OPTIONS") { res.writeHead(204); return res.end(); }
@@ -619,7 +626,7 @@ const server = http.createServer((req, res) => {
 
   res.writeHead(404);
   res.end();
-});
+}
 
 function start() {
   connectOpencode();
