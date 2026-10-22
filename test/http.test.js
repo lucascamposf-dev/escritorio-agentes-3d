@@ -93,3 +93,15 @@ test("acentos chegam inteiros mesmo divididos entre pacotes", async () => {
   });
   assert.strictEqual(app.S.agents.build.text, "lendo ação.txt");
 });
+
+test("arquivos estaticos: so js/, css/ e vendor/, sem escapar da pasta", async () => {
+  const ok = await req("GET", "/vendor/three/three.module.min.js");
+  assert.strictEqual(ok.status, 200);
+  assert.match(ok.headers["content-type"], /javascript/);
+  for (const p of ["/server.js", "/vendor/../server.js", "/vendor/%2e%2e/server.js", "/js/..%5cserver.js",
+    "/vendor/three/../../janela.js", "/events.log", "/.git/config", "/vendor/three/", "/vendor/three/LICENSE", "/js/%zz"]) {
+    const r = await req("GET", p);
+    assert.ok(r.status === 404 || r.status === 500, `${p} -> ${r.status}`);
+    assert.doesNotMatch(r.body || "", /require\(|\[core\]/, p);
+  }
+});

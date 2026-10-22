@@ -619,6 +619,26 @@ function readBody(req, res, done) {
   req.on("end", () => { if (!over) done(body); });
 }
 
+// arquivos da pagina: so dentro de js/, css/ e vendor/ (nunca ../ nem outros arquivos do projeto)
+const STATIC_DIRS = ["js", "css", "vendor"];
+const TYPES = { ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8",
+  ".png": "image/png", ".svg": "image/svg+xml", ".txt": "text/plain; charset=utf-8" };
+function serveStatic(pathname, res) {
+  const rel = path.normalize(decodeURIComponent(pathname)).replace(/^[\\/]+/, "");
+  const dir = rel.split(/[\\/]/)[0];
+  if (!STATIC_DIRS.includes(dir)) return false;
+  const file = path.join(__dirname, rel);
+  if (!file.startsWith(path.join(__dirname, dir) + path.sep)) return false;
+  const type = TYPES[path.extname(file).toLowerCase()];
+  let st;
+  try { st = fs.statSync(file); } catch { return false; }
+  if (!type || !st.isFile()) return false;
+  // vendor/ nao muda; o resto muda enquanto o escritorio e desenvolvido
+  res.writeHead(200, { "Content-Type": type, "Content-Length": st.size, "Cache-Control": dir === "vendor" ? "max-age=86400" : "no-cache" });
+  fs.createReadStream(file).pipe(res);
+  return true;
+}
+
 function route(req, res) {
   if (!allowed(req)) { res.writeHead(403); return res.end(); }
   // base fixa: o cabecalho Host vem de fora e pode ser invalido
@@ -695,12 +715,7 @@ function route(req, res) {
     });
   }
 
-  if (url.pathname === "/three.min.js") {
-    const f = path.join(__dirname, "three.min.js");
-    if (!fs.existsSync(f)) { res.writeHead(404); return res.end(); }
-    res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "max-age=86400" });
-    return fs.createReadStream(f).pipe(res);
-  }
+  if (serveStatic(url.pathname, res)) return;
 
   if (url.pathname === "/favicon.ico") { res.writeHead(204); return res.end(); }
 

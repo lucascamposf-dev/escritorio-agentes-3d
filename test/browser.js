@@ -39,6 +39,7 @@ async function launch() {
   };
   const send = (method, params = {}) => new Promise((ok) => { const id = ++n; pending.set(id, ok); ws.send(JSON.stringify({ id, method, params })); });
   await send("Runtime.enable"); await send("Network.enable"); await send("Page.enable");
+  await send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
 
   page.open = async (url, setup) => {
     page.errors.length = 0; page.requests.length = 0;
@@ -55,6 +56,12 @@ async function launch() {
     const end = Date.now() + ms;
     while (Date.now() < end) { try { if (await page.eval(expr)) return true; } catch {} await new Promise((r) => setTimeout(r, 100)); }
     throw new Error("tempo esgotado esperando: " + expr);
+  };
+  // salva um PNG do que esta na tela
+  page.screenshot = async (arquivo) => {
+    const r = await send("Page.captureScreenshot", { format: "png" });
+    fs.writeFileSync(arquivo, Buffer.from(r.data, "base64"));
+    return arquivo;
   };
   page.close = async () => {
     try { ws.close(); } catch {}

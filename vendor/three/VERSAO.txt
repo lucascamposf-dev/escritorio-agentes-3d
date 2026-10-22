@@ -1,0 +1,2 @@
+three.js r170 (pacote npm three@0.170.0, sha1 6087f97aab79e9e9312f9c89fcef6808642dfbb7).
+So os arquivos usados pelo escritorio. Licenca MIT em LICENSE.

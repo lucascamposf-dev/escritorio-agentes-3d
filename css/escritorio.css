@@ -1,0 +1,105 @@
+/* Escritorio: cena 3D em tela cheia com o HUD por cima */
+:root {
+  --bg: #0e1016; --glass: rgba(18, 21, 30, .72); --glass2: rgba(28, 32, 44, .82); --line: rgba(255, 255, 255, .09);
+  --ink: #eef0f6; --mut: #9097a8; --plan: #ffb454; --build: #5aa9ff; --sub: #3ddc97;
+  --ok: #4ade80; --warn: #fbbf24; --err: #f87171; --r: 14px;
+  color-scheme: dark;
+}
+* { box-sizing: border-box }
+html, body { height: 100%; margin: 0 }
+body { background: var(--bg); color: var(--ink); font: 13px/1.35 "Segoe UI", system-ui, sans-serif; overflow: hidden; user-select: none }
+button { font: inherit; color: var(--ink); background: var(--glass2); border: 1px solid var(--line); border-radius: 10px; padding: 5px 9px; cursor: pointer; transition: border-color .2s, background .2s }
+button:hover { border-color: rgba(255, 255, 255, .28) }
+button.on { border-color: var(--ok); color: var(--ok) }
+[hidden] { display: none !important }
+
+/* cena */
+#stage { position: fixed; inset: 0 }
+#stage canvas { display: block; width: 100%; height: 100%; outline: none }
+#stage .aviso { position: absolute; inset: 0; display: grid; place-items: center; color: var(--mut); font-size: 15px; text-align: center; padding: 20px }
+
+/* baloes sobre os personagens */
+#baloes { position: fixed; inset: 0; pointer-events: none; overflow: hidden }
+.balao { position: absolute; left: 0; top: 0; transform: translate(-50%, -100%); white-space: nowrap; pointer-events: auto; cursor: pointer; will-change: transform }
+.balao .txt { display: block; max-width: 260px; overflow: hidden; text-overflow: ellipsis; background: rgba(12, 14, 20, .86); border: 1.5px solid var(--c, var(--mut)); color: var(--ink);
+  padding: 4px 10px; border-radius: 12px; font-size: 12px; box-shadow: 0 4px 14px rgba(0, 0, 0, .35); backdrop-filter: blur(4px) }
+.balao .nome { display: block; text-align: center; font-size: 10.5px; font-weight: 600; color: var(--c, var(--mut)); margin-top: 2px; text-shadow: 0 1px 3px #000; letter-spacing: .02em }
+.balao.idle .txt { opacity: .75; color: var(--mut) }
+.balao.waiting .txt { border-color: var(--warn); color: var(--warn); animation: pulso 1s ease-in-out infinite }
+.balao.error .txt { border-color: var(--err); color: var(--err) }
+.balao.done .txt { border-color: var(--ok); color: var(--ok) }
+.balao.mini .txt { display: none }
+.balao.longe { opacity: .55 }
+@keyframes pulso { 50% { box-shadow: 0 0 16px 3px rgba(251, 191, 36, .55) } }
+
+/* barra do topo */
+#topo { position: fixed; top: 8px; left: 8px; right: 8px; display: flex; align-items: center; gap: 8px; pointer-events: none }
+#topo > * { pointer-events: auto }
+.vidro { background: var(--glass); border: 1px solid var(--line); border-radius: var(--r); backdrop-filter: blur(10px) saturate(1.2); box-shadow: 0 6px 24px rgba(0, 0, 0, .3) }
+#conexao { display: flex; align-items: center; gap: 7px; padding: 7px 12px; min-width: 0; max-width: 40vw }
+#conexao .dot { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--err); box-shadow: 0 0 8px currentColor }
+#conexao .dot.on { background: var(--ok) } #conexao .dot.wait { background: var(--warn) }
+#conn { color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+#proj { font-weight: 600; white-space: nowrap }
+#chips { display: flex; gap: 6px; padding: 5px; flex-wrap: wrap; margin: 0 auto }
+.chip { background: rgba(0, 0, 0, .25); border-radius: 999px; padding: 3px 10px; color: var(--mut); white-space: nowrap }
+.chip b { color: var(--ink); font-weight: 600 }
+#botoes { display: flex; gap: 5px; padding: 5px }
+
+/* canto de baixo: contexto e atividade */
+#painel { position: fixed; left: 8px; bottom: 8px; width: min(360px, calc(100vw - 16px)); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px }
+body.compacto #painel #log { display: none }
+.ctx { cursor: pointer }
+.ctxh { display: flex; justify-content: space-between; color: var(--mut); font-size: 12px; margin-bottom: 5px }
+.ctxh b { color: var(--ink) }
+.bar { height: 7px; border-radius: 5px; background: rgba(0, 0, 0, .35); overflow: hidden }
+.bar i { display: block; height: 100%; width: 0; background: var(--ok); transition: width .5s, background .5s }
+.bar.mid i { background: var(--warn) } .bar.hot i { background: var(--err) }
+#log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--mut) }
+#log li { display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden }
+#log li span { overflow: hidden; text-overflow: ellipsis }
+#log time { flex: none; font-variant-numeric: tabular-nums; opacity: .7 }
+#log i { flex: none; width: 7px; height: 7px; border-radius: 50% }
+#log li:first-child { color: var(--ink) }
+
+/* cartao de detalhes ao clicar num personagem */
+#detalhe { position: fixed; right: 8px; bottom: 8px; width: min(300px, calc(100vw - 16px)); padding: 12px 14px }
+#detalhe h3 { margin: 0 0 2px; font-size: 15px }
+#detalhe .papel { color: var(--mut); font-size: 12px; margin-bottom: 8px }
+#detalhe .linha { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; border-top: 1px solid var(--line) }
+#detalhe .linha span:first-child { color: var(--mut) }
+#detalhe .linha span:last-child { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+#detalhe .acoes { display: flex; gap: 6px; margin-top: 10px }
+#detalhe .fechar { position: absolute; top: 6px; right: 6px; padding: 2px 7px }
+
+/* gaveta da aparencia */
+#aparencia { position: fixed; top: 60px; right: 8px; bottom: 8px; width: min(420px, calc(100vw - 16px)); display: flex; flex-direction: column; overflow: hidden }
+#aparencia header { display: flex; align-items: center; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--line) }
+#aparencia header h2 { margin: 0 auto 0 0; font-size: 15px }
+#aparencia .abas { display: flex; gap: 4px; padding: 8px 12px 0 }
+#aparencia .abas button.sel { border-color: var(--build); color: var(--build) }
+#aparencia .corpo { overflow: auto; padding: 10px 12px 14px; flex: 1 }
+#aparencia h4 { margin: 14px 0 6px; font-size: 12px; color: var(--mut); text-transform: uppercase; letter-spacing: .06em }
+.temas { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px }
+.tema { padding: 0; overflow: hidden; text-align: left; border-radius: 12px }
+.tema .cores { height: 54px; display: flex }
+.tema .cores i { flex: 1 }
+.tema span { display: block; padding: 6px 8px; font-weight: 600 }
+.tema small { display: block; padding: 0 8px 7px; color: var(--mut); font-size: 11px }
+.tema.sel { border-color: var(--build); box-shadow: 0 0 0 1px var(--build) }
+.quem { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 10px; background: rgba(0, 0, 0, .2); margin-bottom: 6px }
+.quem .rot { flex: 1; min-width: 0 }
+.quem .rot b { display: block }
+.quem .rot small { color: var(--mut) }
+.quem select { max-width: 170px }
+select, input[type=color] { font: inherit; color: var(--ink); background: var(--glass2); border: 1px solid var(--line); border-radius: 8px; padding: 4px 6px }
+input[type=color] { padding: 1px; width: 34px; height: 26px }
+.skins { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; margin-top: 6px }
+.skin { padding: 4px; border-radius: 10px; text-align: center; font-size: 11px }
+.skin canvas { display: block; width: 100%; aspect-ratio: 1; border-radius: 8px; background: rgba(0, 0, 0, .25) }
+.skin.sel { border-color: var(--build); box-shadow: 0 0 0 1px var(--build) }
+.editor { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; margin-top: 8px }
+.editor label { color: var(--mut) }
+.previa { display: block; width: 100%; aspect-ratio: 4 / 3; border-radius: 12px; background: rgba(0, 0, 0, .3); margin-top: 6px }
+
+@media (max-width: 760px) { #chips { display: none } #conexao { max-width: 55vw } }
