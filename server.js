@@ -198,6 +198,7 @@ function handle(ev) {
       const i = p.info || {};
       if (i.id) {
         sessions.set(i.id, { parentID: i.parentID });
+        cap(sessions, 500);
         if (i.parentID) {
           const old = childInfo.get(i.id) || {};
           const m = /\(@([\w-]+)\s+subagent\)/i.exec(i.title || "");
@@ -247,7 +248,7 @@ function handle(ev) {
           if (f) addEdited(f);
         }
         const id = part.id || part.callID;
-        if (id && !loggedParts.has(id)) { loggedParts.add(id); addLog((child ? "↳ " : "") + text); }
+        if (id && !loggedParts.has(id)) { loggedParts.add(id); cap(loggedParts, 1000); addLog((child ? "↳ " : "") + text); }
       } else if (part.type === "reasoning") { text = "pensando…"; kind = "think"; }
       else if (part.type === "text") { text = "escrevendo a resposta…"; kind = "edit"; }
       else break;
@@ -386,6 +387,7 @@ function ccChild(p) {
   const free = [...childActive.keys()].reverse().find((k) => k.startsWith("cc:") && !used.has(k));
   const id = free || "cc:" + p.agent_id;
   ccSubs.set(p.agent_id, id);
+  cap(ccSubs, 100);
   if (!childInfo.has(id)) childInfo.set(id, { name: p.agent_type || "subagente", task: "", text: "", kind: "think" });
   return id;
 }
@@ -670,4 +672,5 @@ function start() {
 
 // "node server.js" liga tudo; os testes so importam as funcoes
 if (require.main === module) start();
-module.exports = { S, server, handle, handleClaude, snapshot, setA };
+module.exports = { S, server, handle, handleClaude, snapshot, setA,
+  sizes: () => ({ sessions: sessions.size, loggedParts: loggedParts.size, ccSubs: ccSubs.size, projects: projects.size }) };
