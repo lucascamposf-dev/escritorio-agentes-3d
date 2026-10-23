@@ -2,3 +2,4 @@ events.log
 oc-debug.log
 node_modules/
 remoto.json
+*.antes-claude
