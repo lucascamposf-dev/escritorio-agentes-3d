@@ -39,7 +39,8 @@ for (const ev of Object.keys(cfg.hooks)) {
 
 if (!remover) {
   for (const ev of EVENTS) {
-    const group = { hooks: [{ type: "command", command, timeout: 10 }] };
+    // PermissionRequest pode esperar a resposta dada pelo celular (modo "fora" do painel)
+    const group = { hooks: [{ type: "command", command, timeout: ev === "PermissionRequest" ? 600 : 10 }] };
     if (WITH_MATCHER.has(ev)) group.matcher = "*";
     (cfg.hooks[ev] = cfg.hooks[ev] || []).push(group);
   }

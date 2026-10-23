@@ -4,7 +4,7 @@ const KEY = 'escritorio.config';
 
 const PADRAO = {
   tema: 'moderno',
-  qualidade: 'alta',      // alta | baixa
+  qualidade: globalThis.matchMedia?.('(pointer: coarse)').matches ? 'baixa' : 'alta', // alta | baixa (celular: baixa)
   camera: 'seguir',       // livre | seguir | cinema
   som: false,
   fixar: false,           // janela sempre por cima

@@ -1,7 +1,7 @@
 // HUD: barra do topo, contexto, log de atividade e avisos quando um agente muda de estado.
 import { config } from './config.js';
 import { beep, SONS, notificar, ligarSom } from './avisos.js';
-import { janela } from './conexao.js';
+import { janela, responder, fora } from './conexao.js';
 
 const $ = (id) => document.getElementById(id);
 const fmtK = (n) => n >= 100000 ? Math.round(n / 1000) + 'K' : n >= 1000 ? (n / 1000).toFixed(1) + 'K' : String(n);
@@ -10,7 +10,8 @@ export const NOMES = { plan: 'Auditor', build: 'Construtor' };
 
 const prev = { plan: 'idle', build: 'idle' };
 const inicio = { plan: 0, build: 0 };
-let ultimaDur = 0, atual = null, acoesHud = {};
+let ultimaDur = 0, atual = null, acoesHud = {}, chavePedidos = '';
+const local = /^(localhost|127\.0\.0\.1)$/.test(location.hostname); // no celular a janela do PC nao e controlada
 
 // chamado a cada estado novo (real ou do demo)
 export function mostrar(s) {
@@ -43,10 +44,38 @@ export function mostrar(s) {
     const sp = document.createElement('span'); sp.textContent = e.text; sp.title = e.text;
     li.append(tm, dot, sp); ul.appendChild(li);
   }
+  pedidos(s.pedidos || []);
   subagentes(s.subs || []);
   skills(s.skills || [], s.now || Date.now());
   tempo();
   janelaBotoes(s.janela);
+  $('bFora').hidden = !s.remoto;
+  $('bFora').classList.toggle('on', !!s.fora);
+}
+
+// permissoes esperando resposta: permitir, sempre permitir ou negar (no PC ou no celular)
+function pedidos(lista) {
+  const chave = lista.map((p) => p.id).join();
+  if (chave === chavePedidos) return; // nao refaz os botoes no meio de um toque
+  chavePedidos = chave;
+  const ul = $('pedidosList'); ul.textContent = '';
+  $('pedidosBox').hidden = !lista.length;
+  for (const p of lista) {
+    const li = document.createElement('li');
+    const quem = document.createElement('b'); quem.textContent = NOMES[p.agent] || p.agent;
+    quem.style.color = p.agent === 'plan' ? 'var(--plan)' : 'var(--build)';
+    const txt = document.createElement('span'); txt.textContent = p.text; txt.title = p.text;
+    const bt = document.createElement('div'); bt.className = 'resp';
+    const botao = (rotulo, decisao, cls) => {
+      const b = document.createElement('button'); b.textContent = rotulo; b.className = cls; b.dataset.decisao = decisao;
+      b.addEventListener('click', () => { for (const x of bt.children) x.disabled = true; responder(p.id, decisao); });
+      bt.appendChild(b);
+    };
+    botao('Permitir', 'sim', 'sim');
+    if (p.sempre) botao('Sempre', 'sempre', 'sempre');
+    botao('Negar', 'nao', 'nao');
+    li.append(quem, txt, bt); ul.appendChild(li);
+  }
 }
 
 // cada subagente: nome do personagem, tipo e o que esta fazendo agora
@@ -96,7 +125,7 @@ export function status(c) {
 }
 
 function janelaBotoes(w) {
-  const on = !!(w && w.controle);
+  const on = !!(w && w.controle) && local;
   $('bPin').hidden = $('bHide').hidden = !on;
   $('bPin').classList.toggle('on', !!(w && w.pinned));
 }
@@ -110,6 +139,7 @@ export function iniciarHud(acoes) {
 
   $('bPin').addEventListener('click', () => { const on = !$('bPin').classList.contains('on'); config.set('fixar', on); janela({ acao: 'fixar', on }); });
   $('bHide').addEventListener('click', () => janela({ acao: 'ocultar' }));
+  $('bFora').addEventListener('click', () => fora(!$('bFora').classList.contains('on')));
 
   const CAMS = ['seguir', 'livre', 'cinema'];
   const bCam = $('bCam');

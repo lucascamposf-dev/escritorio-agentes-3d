@@ -11,6 +11,7 @@ resultado e vai embora. HUD por cima com contexto, tempo, custo, arquivos e log.
 opencode (porta 4096)  --SSE /event------>  server.js (porta 4747)  --SSE /events-->  index.html + js/
 Claude Code (hooks) --claude-hook.js--POST /claude-->        |
                                                     janela.js (PowerShell/user32: restaura, minimiza, fixa)
+celular --Tailscale (IP 100.x, token)--> 2o servidor so no IP do Tailscale;  avisos --> ntfy
 ```
 
 ### Servidor (Node puro, CommonJS, sem dependências)
@@ -22,7 +23,11 @@ Claude Code (hooks) --claude-hook.js--POST /claude-->        |
   restaura (sem roubar o foco), minimiza e fixa por cima. `wakeWindow()` no server.js chama isso
   quando o agente começa a trabalhar; o botão "ocultar" segura a janela até o próximo pedido.
 - **claude-hook.js** / **instalar-claude.js** — hook do Claude Code e o instalador
-  (`~/.claude/settings.json`, aponta para `E:/escritorio/claude-hook.js`).
+  (`~/.claude/settings.json`, aponta para `E:/escritorio/claude-hook.js`). O `PermissionRequest` tem
+  timeout de 600 s: no modo "fora" o servidor segura a resposta e o hook a escreve na saida padrao.
+- **remoto.js** — acesso pelo celular. `node remoto.js` cria `remoto.json` (fora do git: token + topico do
+  ntfy) e mostra o link. Com ele o servidor abre um 2o listener **so no IP do Tailscale** (100.64/10):
+  `?t=<token>` grava cookie HttpOnly; pelo celular so `/`, estaticos, `/events`, `/responder`, `/fora`.
 
 ### Página (módulos ES, sem build; `js/package.json` marca a pasta como ESM)
 - **index.html** — só a estrutura do HUD e o import map do three.js.
@@ -51,6 +56,9 @@ Claude Code (hooks) --claude-hook.js--POST /claude-->        |
 - Subagentes: `S.subs` (`working`/`done`); custo e arquivos contados por projeto. Eventos de dentro de um
   subagente (`agent_id`) so mudam o subagente; os em segundo plano (`bg`) seguem depois do `Stop` ate o `SubagentStop`.
 - Skills: `S.skills` (ultimas 6: ferramenta `Skill` ou `/nome` digitado no prompt), no painel e no telao.
+- Permissoes: `S.pedidos` (respondidas em `POST /responder {id, decisao: sim|sempre|nao}`). Claude Code so no
+  modo `S.fora` (`POST /fora`; desligar devolve os pedidos ao terminal); opencode sempre, via API dele.
+  No modo fora, `setA()` avisa no celular (ntfy) ao pedir permissao, terminar ou dar erro.
 - Modo foco (`diretor.js`): com alguem trabalhando (principal ou subagente), quem esta livre (o outro principal e os
   figurantes) senta na mesa redonda e trabalha junto (`apoiar()`); sem trabalho, voltam a rotina.
 
@@ -77,7 +85,7 @@ Claude Code (hooks) --claude-hook.js--POST /claude-->        |
 
 ## Cuidados importantes
 
-- Segurança: o servidor escuta só em `127.0.0.1`; `allowed()` recusa outros sites (Host, Origin,
+- Segurança: o servidor escuta só em `127.0.0.1` (e, com `remoto.json`, no IP do Tailscale com token — nunca `0.0.0.0`); `allowed()` recusa outros sites (Host, Origin,
   Sec-Fetch-Site). Nunca `Access-Control-Allow-Origin: *`. Nomes de agente passam por `isAgent()`.
   POST usa `readBody()` (limite 10 MB). Estáticos só de `js/`, `css/`, `vendor/`.
 - GPU: geometrias de peças/personagens vêm do cache do `Kit` (largura do personagem é escala,

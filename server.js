@@ -3,10 +3,13 @@
 // - Mantem um estado completo (quem trabalha, o que faz, permissao, erro, contexto...).
 // - Envia esse estado para a pagina (index.html) via SSE em /events.
 // - Recebe os eventos do Claude Code (hooks) em POST /claude.
+// - Com remoto.json: tambem abre o painel na rede do Tailscale (celular) e manda avisos pelo ntfy.
 // Uso: node server.js   (abre em http://localhost:4747)
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
+const remoto = require("./remoto");
 
 const PORT = process.env.PORT || 4747;
 const OC_PORT = process.env.OC_PORT || 4096;
@@ -30,7 +33,12 @@ const S = {
   log: [],
   agents: { plan: mk(), build: mk() },
   janela: { pinned: false, hidden: false, controle: process.platform === "win32" },
+  remoto: false, // existe remoto.json: painel no celular e avisos
+  fora: false, // modo "fora": avisa no celular e segura as permissoes do Claude Code ate alguem responder no painel
+  pedidos: [], // permissoes esperando resposta: { id, t, agent, text, sempre }
 };
+let REMOTO = remoto.ler();
+S.remoto = !!REMOTO;
 let main = "build";
 let lastSignal = 0;
 const clients = new Set();
@@ -136,9 +144,20 @@ function addLog(text) {
   if (S.log.length > 8) S.log.shift();
 }
 const isAgent = (w) => w === "plan" || w === "build";
+const NOMES = { plan: "Auditor", build: "Construtor" };
+// aviso no celular quando o agente muda de estado (so no modo "fora")
+function avisarCelular(who, status, text) {
+  if (!S.fora || !REMOTO) return;
+  const nome = NOMES[who], onde = S.project ? " · " + S.project : "";
+  const link = remoteIp ? `http://${remoteIp}:${PORT}/` : "";
+  if (status === "waiting") remoto.avisar(REMOTO, { titulo: nome + " precisa de você" + onde, texto: text || "pedido de permissão", prioridade: "high", tags: "raising_hand", link });
+  if (status === "done") remoto.avisar(REMOTO, { titulo: nome + " terminou" + onde, texto: (S.log.filter((l) => l.text !== "terminou").pop() || {}).text || "pronto!", tags: "white_check_mark", link });
+  if (status === "error") remoto.avisar(REMOTO, { titulo: nome + " deu erro" + onde, texto: text || "erro", prioridade: "high", tags: "x", link });
+}
 function setA(who, status, text, kind) {
   if (!isAgent(who)) return false; // "__proto__", "constructor"... viriam do Object.prototype
   const a = S.agents[who];
+  if (a.status !== status) avisarCelular(who, status, text);
   if (status === "working" && (a.status === "idle" || a.status === "done" || a.status === "error")) a.since = Date.now();
   if (status === "waiting" && !a.since) a.since = Date.now();
   a.status = status;
@@ -288,9 +307,12 @@ function handle(ev) {
       if (S.agents[o].status === "working") setA(o, "idle");
       setA(main, "waiting", txt, "wait");
       addLog(txt);
+      if (p.id && p.sessionID && !perms.has("oc:" + p.id)) addPedido("oc:" + p.id, { src: "oc", sid: p.sessionID, ocId: p.id }, what + (pat ? ": " + pat : ""));
       break;
     }
     case "permission.replied": {
+      const rid = p.permissionID || p.requestID || p.id;
+      if (rid && perms.has("oc:" + rid)) dropPedido("oc:" + rid);
       if (S.agents[main].status === "waiting") setA(main, "working", "continuando…", "think");
       break;
     }
@@ -332,6 +354,7 @@ const { exec } = require("child_process");
 const janela = require("./janela");
 const W = S.janela; // { pinned: sempre por cima, hidden: o usuario apertou "ocultar" }
 let lastOpen = 0;
+const locais = () => [...clients].filter((r) => !r.remoto).length; // o celular nao conta como janela aberta
 
 let opener = Object.assign((url) => {
   if (process.platform === "win32") {
@@ -342,7 +365,7 @@ let opener = Object.assign((url) => {
 }, { real: true });
 function openOffice() {
   if (process.env.OPEN_BROWSER === "0" && opener.real) return;
-  if (clients.size > 0 || Date.now() - lastOpen < 60000) return; // ja esta aberto
+  if (locais() > 0 || Date.now() - lastOpen < 60000) return; // ja esta aberto
   lastOpen = Date.now();
   opener(`http://localhost:${PORT}`);
 }
@@ -356,7 +379,7 @@ function wakeWindow(newRequest) {
   // a janela que ja existe ainda esta reconectando e clients fica vazio)
   janela.send("restore").then((r) => {
     if (r === "ok") { if (W.pinned) janela.send("pin"); }
-    else if (clients.size === 0) openOffice();
+    else if (locais() === 0) openOffice();
   });
 }
 
@@ -367,6 +390,91 @@ function windowAction(j) {
   else return false;
   push();
   return true;
+}
+
+// ---------- permissoes respondidas pelo painel (no PC ou no celular) ----------
+// Claude Code: no modo "fora" o servidor segura a resposta do hook PermissionRequest ate alguem responder.
+// opencode: o pedido aparece no painel sempre; a resposta vai para a API do opencode.
+const perms = new Map(); // id -> { src: "cc"|"oc", agent, fim?, sid?, ocId?, sugestoes? }
+const ESPERA = 9 * 60000; // o hook espera ate 10 min (timeout do instalar-claude.js)
+
+function addPedido(id, info, text) {
+  info.agent = main;
+  perms.set(id, info);
+  S.pedidos = S.pedidos.filter((x) => x.id !== id);
+  S.pedidos.push({ id, t: Date.now(), agent: main, text: cut(text, 160), sempre: info.src === "oc" || !!info.sugestoes });
+  while (S.pedidos.length > 10) dropPedido(S.pedidos[0].id);
+  push();
+}
+// tira o pedido da tela; "out" e a resposta para o hook do Claude Code (vazio: o Claude pergunta no terminal)
+function dropPedido(id, out) {
+  const p = perms.get(id);
+  perms.delete(id);
+  S.pedidos = S.pedidos.filter((x) => x.id !== id);
+  if (p && p.fim) p.fim(out);
+  push();
+  return p;
+}
+
+// texto do pedido com mais detalhe que o balao (o comando inteiro, o arquivo...)
+function ccPedidoTexto(name, input) {
+  input = input || {};
+  const det = input.command || input.file_path || input.notebook_path || input.url || input.query || input.pattern || input.description || "";
+  return (name || "ferramenta") + (det ? ": " + det : "");
+}
+
+function segurar(p, res) {
+  const id = "cc:" + crypto.randomBytes(6).toString("hex");
+  const timer = setTimeout(() => dropPedido(id), ESPERA);
+  const fim = (out) => {
+    clearTimeout(timer);
+    if (res.writableEnded || res.destroyed) return;
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(out || "");
+  };
+  // o hook foi encerrado (o Claude desistiu, o usuario interrompeu...): o pedido some do painel
+  res.on("close", () => { if (perms.has(id)) dropPedido(id); });
+  const sug = Array.isArray(p.permission_suggestions) && p.permission_suggestions.length ? p.permission_suggestions : null;
+  addPedido(id, { src: "cc", fim, sugestoes: sug }, ccPedidoTexto(p.tool_name, p.tool_input));
+}
+
+function ocResponder(sid, pid, resposta) {
+  const post = (p, body, cb) => {
+    const data = JSON.stringify(body);
+    const r = http.request({ host: "127.0.0.1", port: OC_PORT, path: p, method: "POST", timeout: 5000,
+      headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) } }, (res) => { res.resume(); cb && cb(res.statusCode); });
+    r.on("timeout", () => r.destroy());
+    r.on("error", () => {});
+    r.end(data);
+  };
+  // versoes mais novas do opencode usam /permission/:id/reply
+  post(`/session/${encodeURIComponent(sid)}/permissions/${encodeURIComponent(pid)}`, { response: resposta }, (st) => {
+    if (st >= 400) post(`/permission/${encodeURIComponent(pid)}/reply`, { reply: resposta });
+  });
+}
+
+// decisao: "sim" (so desta vez), "sempre" ou "nao"
+function responder(id, decisao) {
+  if (!["sim", "sempre", "nao"].includes(decisao) || !perms.has(id)) return false;
+  const p = perms.get(id);
+  if (p.src === "cc") {
+    const d = decisao === "nao" ? { behavior: "deny", message: "Negado pelo painel do Escritorio." } : { behavior: "allow" };
+    if (decisao === "sempre" && p.sugestoes) d.updatedPermissions = p.sugestoes;
+    dropPedido(id, JSON.stringify({ hookSpecificOutput: { hookEventName: "PermissionRequest", decision: d } }));
+  } else {
+    dropPedido(id);
+    ocResponder(p.sid, p.ocId, decisao === "nao" ? "reject" : decisao === "sempre" ? "always" : "once");
+  }
+  addLog(decisao === "nao" ? "permissão negada pelo painel" : "permitido pelo painel");
+  if (S.agents[p.agent].status === "waiting") setA(p.agent, "working", "continuando…", "think");
+  return true;
+}
+
+// modo "fora": desligado, as permissoes seguradas voltam para o terminal
+function setFora(on) {
+  S.fora = !!on;
+  if (!S.fora) for (const [id, p] of [...perms]) if (p.src === "cc") dropPedido(id);
+  push();
 }
 
 // ---------- Claude Code (eventos enviados pelos hooks em POST /claude) ----------
@@ -639,18 +747,33 @@ function tick() {
 }
 
 // ---------- HTTP ----------
-const server = http.createServer((req, res) => {
-  // um erro num request nunca pode derrubar o servidor inteiro
+// um erro num request nunca pode derrubar o servidor inteiro
+const atender = (rem) => (req, res) => {
+  req.remoto = rem;
   try { route(req, res); }
   catch (e) { try { if (!res.headersSent) res.writeHead(500); res.end(); } catch {} }
-});
+};
+const server = http.createServer(atender(false));
+
+// celular: um segundo servidor, so no IP do Tailscale (nunca 0.0.0.0), e so com o token
+let remoteServer = null, remoteIp = "";
+function ligarRemoto(ip, port) {
+  remoteIp = ip;
+  remoteServer = http.createServer(atender(true));
+  return new Promise((ok) => {
+    remoteServer.on("error", (e) => { console.log("Painel do celular nao ligou em " + ip + ": " + e.code); remoteServer = null; remoteIp = ""; ok(0); });
+    remoteServer.listen(port, ip, () => ok(remoteServer.address().port));
+  });
+}
 
 // so a propria pagina e os hooks locais podem falar com o servidor: bloqueia
 // outros sites abertos no navegador (leitura do /events, /set via <img>...) e DNS rebinding
 const LOCAL = /^(localhost|127\.0\.0\.1)(:\d+)?$/i;
+// no celular: o IP do Tailscale ou o nome do MagicDNS (maquina.tailnet.ts.net)
+const hostRemoto = (host) => { const h = host.replace(/:\d+$/, ""); return (!!remoteIp && h === remoteIp) || /^[a-z0-9-]+(\.[a-z0-9-]+)*\.ts\.net$/.test(h); };
 function allowed(req) {
   const host = String(req.headers.host || "").toLowerCase();
-  if (!LOCAL.test(host)) return false;
+  if (!(req.remoto ? hostRemoto(host) : LOCAL.test(host))) return false;
   const site = req.headers["sec-fetch-site"];
   if (site && site !== "same-origin" && site !== "none") return false;
   const origin = req.headers.origin;
@@ -692,14 +815,37 @@ function serveStatic(pathname, res) {
   return true;
 }
 
+// celular: o link com ?t=<token> grava um cookie; depois so o cookie vale.
+// Pelo celular so a pagina, o estado e as respostas (nada de /set, /claude, /janela...)
+const REMOTE_PATHS = new Set(["/", "/index.html", "/events", "/responder", "/fora", "/favicon.ico"]);
+function remoteAuth(req, res, url) {
+  const t = url.searchParams.get("t");
+  if (t !== null && remoto.tokenOk(REMOTO, t)) {
+    res.writeHead(302, { "Set-Cookie": `esc_t=${REMOTO.token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000`, Location: "/", "Cache-Control": "no-store" });
+    res.end();
+    return false;
+  }
+  if (!remoto.tokenOk(REMOTO, remoto.cookieToken(req))) {
+    res.writeHead(401, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Abra o link com o token (rode node remoto.js no computador para ver o link).");
+    return false;
+  }
+  if (REMOTE_PATHS.has(url.pathname) || /^\/(js|css|vendor)\//.test(url.pathname)) return true;
+  res.writeHead(403);
+  res.end();
+  return false;
+}
+
 function route(req, res) {
   if (!allowed(req)) { res.writeHead(403); return res.end(); }
   // base fixa: o cabecalho Host vem de fora e pode ser invalido
   const url = new URL(req.url, "http://localhost");
+  if (req.remoto && !remoteAuth(req, res, url)) return;
 
   if (url.pathname === "/events") {
     res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
     res.write(`data: ${JSON.stringify(snapshot())}\n\n`);
+    res.remoto = req.remoto;
     clients.add(res);
     req.on("close", () => clients.delete(res));
     return;
@@ -752,9 +898,35 @@ function route(req, res) {
   // eventos dos hooks do Claude Code
   if (url.pathname === "/claude" && req.method === "POST") {
     return readBody(req, res, (body) => {
-      try { handleClaude(JSON.parse(body || "{}")); res.writeHead(200); }
-      catch { res.writeHead(400); }
+      let p;
+      try { p = JSON.parse(body || "{}"); handleClaude(p); }
+      catch { res.writeHead(400); return res.end(); }
+      // modo "fora": o hook espera a resposta dada pelo painel (no celular)
+      if (p && p.hook_event_name === "PermissionRequest" && S.fora) return segurar(p, res);
+      res.writeHead(200);
       res.end();
+    });
+  }
+
+  // resposta a um pedido de permissao: { id, decisao: "sim" | "sempre" | "nao" }
+  if (url.pathname === "/responder" && req.method === "POST") {
+    return readBody(req, res, (body) => {
+      let ok = false;
+      try { const j = JSON.parse(body || "{}"); ok = responder(String(j.id || ""), j.decisao); } catch {}
+      res.writeHead(ok ? 200 : 404);
+      res.end();
+    });
+  }
+
+  // modo "fora": { on: true | false }
+  if (url.pathname === "/fora" && req.method === "POST") {
+    return readBody(req, res, (body) => {
+      let j = null;
+      try { j = JSON.parse(body || "{}"); } catch {}
+      if (!j || typeof j.on !== "boolean") { res.writeHead(400); return res.end(); }
+      setFora(j.on);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ fora: S.fora }));
     });
   }
 
@@ -789,9 +961,18 @@ function start() {
   // 127.0.0.1: so aceita conexoes da propria maquina
   server.listen(PORT, "127.0.0.1", () =>
     console.log(`Escritorio em http://localhost:${PORT} (ouvindo opencode na porta ${OC_PORT} e Claude Code em /claude)`));
+  // celular: espera o Tailscale aparecer (ele pode ligar depois do servidor)
+  const tentar = () => {
+    if (!REMOTO || remoteServer) return;
+    const ip = REMOTO.ip || remoto.ipTailscale();
+    if (ip) ligarRemoto(ip, PORT).then((p) => p && console.log(`Painel no celular: http://${ip}:${p}/ (abra uma vez o link do node remoto.js)`));
+  };
+  tentar();
+  setInterval(tentar, 30000);
 }
 
 // "node server.js" liga tudo; os testes so importam as funcoes
 if (require.main === module) start();
-module.exports = { _setOpener: (fn) => { opener = fn; }, S, server, handle, handleClaude, snapshot, setA, sseEvents,
+module.exports = { _setOpener: (fn) => { opener = fn; }, _setRemoto: (c) => { REMOTO = c; S.remoto = !!c; }, ligarRemoto,
+  remoteServer: () => remoteServer, responder, setFora, S, server, handle, handleClaude, snapshot, setA, sseEvents,
   sizes: () => ({ sessions: sessions.size, loggedParts: loggedParts.size, ccSubs: ccSubs.size, projects: projects.size }) };

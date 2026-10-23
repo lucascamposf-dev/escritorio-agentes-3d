@@ -58,6 +58,17 @@ body.compacto #painel #log { display: none }
 body.painel-min #painel { width: auto; padding: 6px 8px 6px 12px }
 body.painel-min #painel .ctxh { margin: 0 }
 body.painel-min #painel .bar, body.painel-min #corpo { display: none }
+/* pedidos de permissao: aparecem mesmo com o painel minimizado */
+#pedidosBox { border: 1px solid var(--warn); border-radius: 10px; padding: 6px 8px; animation: pulso 1.4s ease-in-out infinite }
+#pedidosBox h5 { color: var(--warn) }
+#pedidosList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 12px }
+#pedidosList li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px }
+#pedidosList span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); user-select: text }
+#pedidosList .resp { display: flex; gap: 6px; width: 100% }
+#pedidosList .resp button { flex: 1; padding: 6px 8px }
+#pedidosList .sim { border-color: var(--ok); color: var(--ok) }
+#pedidosList .nao { border-color: var(--err); color: var(--err) }
+#pedidosList button:disabled { opacity: .4 }
 #corpo { display: flex; flex-direction: column; gap: 8px; max-height: 45vh; overflow: auto }
 .bloco h5 { margin: 0 0 4px; font-size: 11px; font-weight: 600; color: var(--mut); text-transform: uppercase; letter-spacing: .06em }
 #subsList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: 12px }
@@ -122,3 +133,5 @@ input[type=color] { padding: 1px; width: 34px; height: 26px }
 .previa { display: block; width: 100%; aspect-ratio: 4 / 3; border-radius: 12px; background: rgba(0, 0, 0, .3); margin-top: 6px }
 
 @media (max-width: 760px) { #chips { display: none } #conexao { max-width: 55vw } }
+/* celular: botoes maiores para o dedo, sem os que so servem no PC */
+@media (pointer: coarse) { #botoes button { padding: 8px 11px } #bDemo { display: none } #pedidosList .resp button { padding: 11px 8px; font-size: 14px } }

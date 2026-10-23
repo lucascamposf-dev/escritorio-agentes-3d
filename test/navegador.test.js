@@ -298,3 +298,34 @@ test("modo foco: subagente tem prioridade na mesa cheia e os 5 temas funcionam c
   assert.deepStrictEqual(limpo(), []);
   await req("GET", "/set?agent=build&status=idle");
 });
+
+test("pedido de permissao no painel: botoes permitir/negar e o modo fora", { skip }, async () => {
+  app._setRemoto({ token: "x".repeat(32), ntfy: "" });
+  await abrir("try { const c = JSON.parse(localStorage.getItem('escritorio.config')); c.painelMin = true; localStorage.setItem('escritorio.config', JSON.stringify(c)); } catch {}");
+  await page.until(`!document.getElementById('bFora').hidden`);
+  await page.eval(`document.getElementById('bFora').click()`);
+  await page.until(`document.getElementById('bFora').classList.contains('on')`);
+  assert.strictEqual(app.S.fora, true);
+  // o hook do Claude Code fica esperando a resposta
+  const body = JSON.stringify({ hook_event_name: "PermissionRequest", session_id: "navp", tool_name: "Bash", tool_input: { command: "npm run deploy" } });
+  const resposta = new Promise((ok) => {
+    const r = require("http").request({ host: "127.0.0.1", port: require("./helpers").port(), path: "/claude", method: "POST", headers: { "Content-Type": "application/json" } },
+      (res) => { let b = ""; res.on("data", (c) => (b += c)); res.on("end", () => ok(b)); });
+    r.end(body);
+  });
+  // aparece mesmo com o painel minimizado
+  await page.until(`!document.getElementById('pedidosBox').hidden && getComputedStyle(document.getElementById('pedidosBox')).display !== 'none'`);
+  assert.strictEqual(await page.eval(`document.querySelector('#pedidosList span').textContent`), "Bash: npm run deploy");
+  assert.strictEqual(await page.eval(`[...document.querySelectorAll('#pedidosList button')].map(b => b.dataset.decisao).join()`), "sim,nao");
+  await print("pedido-permissao");
+  await page.eval(`document.querySelector('#pedidosList button.sim').click()`);
+  assert.strictEqual(JSON.parse(await resposta).hookSpecificOutput.decision.behavior, "allow");
+  await page.until(`document.getElementById('pedidosBox').hidden`);
+  await page.eval(`document.getElementById('bFora').click()`);
+  await page.until(`!document.getElementById('bFora').classList.contains('on')`);
+  assert.strictEqual(app.S.fora, false);
+  app._setRemoto(null);
+  app.handleClaude({ hook_event_name: "Stop", session_id: "navp" });
+  await page.eval(`void localStorage.removeItem('escritorio.config')`);
+  assert.deepStrictEqual(limpo(), []);
+});

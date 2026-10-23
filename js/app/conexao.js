@@ -25,5 +25,10 @@ export function conectar() {
   };
 }
 
+// resposta a um pedido de permissao: decisao 'sim' | 'sempre' | 'nao'
+export const responder = (id, decisao) => fetch('/responder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, decisao }) }).catch(() => {});
+// modo "fora": avisos no celular e permissoes esperando a resposta pelo painel
+export const fora = (on) => fetch('/fora', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on }) }).catch(() => {});
+
 // botoes da janela: { acao: 'ocultar' } | { acao: 'fixar', on }
 export const janela = (j) => fetch('/janela', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(j) }).catch(() => {});
