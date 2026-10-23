@@ -41,6 +41,7 @@ async function launch() {
   await send("Runtime.enable"); await send("Network.enable"); await send("Page.enable");
   await send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
 
+  page.tamanho = (width, height) => send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
   page.open = async (url, setup) => {
     page.errors.length = 0; page.requests.length = 0;
     if (setup) await send("Page.addScriptToEvaluateOnNewDocument", { source: setup });

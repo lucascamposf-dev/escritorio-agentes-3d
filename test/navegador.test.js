@@ -329,3 +329,31 @@ test("pedido de permissao no painel: botoes permitir/negar e o modo fora", { ski
   await page.eval(`void localStorage.removeItem('escritorio.config')`);
   assert.deepStrictEqual(limpo(), []);
 });
+
+test("tela estreita: os botoes do topo viram um menu lateral que abre no clique", { skip }, async () => {
+  await abrir();
+  await page.until(`window.ESC && ESC.estado`);
+  const visivel = `(() => { const r = document.getElementById('botoes').getBoundingClientRect(); return getComputedStyle(document.getElementById('botoes')).visibility === 'visible' && r.right <= innerWidth && r.left >= 0; })()`;
+  // tela larga: botoes na barra, sem o botao do menu
+  assert.strictEqual(await page.eval(`getComputedStyle(document.getElementById('bMenu')).display`), "none");
+  assert.strictEqual(await page.eval(visivel), true);
+  await page.tamanho(700, 800);
+  try {
+    await page.until(`getComputedStyle(document.getElementById('bMenu')).display !== 'none'`);
+    await page.until(`getComputedStyle(document.getElementById('botoes')).visibility === 'hidden'`);
+    await page.eval(`document.getElementById('bMenu').click()`);
+    await page.until(visivel);
+    assert.strictEqual(await page.eval(`document.getElementById('bMenu').getAttribute('aria-expanded')`), "true");
+    assert.match(await page.eval(`getComputedStyle(document.getElementById('bSound'), '::after').content`), /Som e avisos/);
+    await print("menu-lateral");
+    // clicar fora fecha
+    await page.eval(`document.getElementById('stage').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))`);
+    await page.until(`getComputedStyle(document.getElementById('botoes')).visibility === 'hidden'`);
+    // abrir a aparencia pelo menu tambem fecha o menu
+    await page.eval(`document.getElementById('bMenu').click()`);
+    await page.until(visivel);
+    await page.eval(`document.getElementById('bLook').click()`);
+    await page.until(`!document.body.classList.contains('menu-aberto')`);
+  } finally { await page.tamanho(1280, 800); }
+  assert.deepStrictEqual(limpo(), []);
+});

@@ -155,6 +155,14 @@ export function iniciarHud(acoes) {
   $('bLook').addEventListener('click', () => acoes.aparencia());
   $('bDemo').addEventListener('click', () => acoes.demo());
 
+  // tela estreita: menu lateral; fecha ao clicar fora, no Esc ou ao abrir algo por cima
+  const bMenu = $('bMenu'), botoes = $('botoes');
+  const menu = (on) => { document.body.classList.toggle('menu-aberto', on); bMenu.classList.toggle('on', on); bMenu.setAttribute('aria-expanded', on); };
+  bMenu.addEventListener('click', () => menu(!document.body.classList.contains('menu-aberto')));
+  document.addEventListener('pointerdown', (e) => { if (!botoes.contains(e.target) && !bMenu.contains(e.target)) menu(false); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') menu(false); });
+  for (const id of ['bLook', 'bDemo', 'bHide']) $(id).addEventListener('click', () => menu(false));
+
   $('ctx').addEventListener('click', () => {
     const v = prompt('Limite de contexto do modelo, em tokens:', config.get('ctxLimite'));
     if (v && parseInt(v, 10) > 1000) { config.set('ctxLimite', parseInt(v, 10)); if (atual) mostrar(atual); }
