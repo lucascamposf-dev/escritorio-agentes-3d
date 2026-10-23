@@ -60,6 +60,7 @@ function pedidos(lista) {
   chavePedidos = chave;
   const ul = $('pedidosList'); ul.textContent = '';
   $('pedidosBox').hidden = !lista.length;
+  $('bGaveta').classList.toggle('alerta', !!lista.length); // gaveta fechada: a seta avisa
   for (const p of lista) {
     const li = document.createElement('li');
     const quem = document.createElement('b'); quem.textContent = NOMES[p.agent] || p.agent;
@@ -155,13 +156,18 @@ export function iniciarHud(acoes) {
   $('bLook').addEventListener('click', () => acoes.aparencia());
   $('bDemo').addEventListener('click', () => acoes.demo());
 
-  // tela estreita: menu lateral; fecha ao clicar fora, no Esc ou ao abrir algo por cima
-  const bMenu = $('bMenu'), botoes = $('botoes');
-  const menu = (on) => { document.body.classList.toggle('menu-aberto', on); bMenu.classList.toggle('on', on); bMenu.setAttribute('aria-expanded', on); };
-  bMenu.addEventListener('click', () => menu(!document.body.classList.contains('menu-aberto')));
-  document.addEventListener('pointerdown', (e) => { if (!botoes.contains(e.target) && !bMenu.contains(e.target)) menu(false); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') menu(false); });
-  for (const id of ['bLook', 'bDemo', 'bHide']) $(id).addEventListener('click', () => menu(false));
+  // tela estreita: o HUD fica numa gaveta embaixo; fecha ao tocar na cena, no Esc ou ao abrir algo por cima
+  const bGaveta = $('bGaveta'), hud = $('hud');
+  const gaveta = (on) => {
+    document.body.classList.toggle('gaveta-aberta', on);
+    bGaveta.textContent = on ? '▼' : '▲';
+    bGaveta.title = on ? 'Esconder o painel' : 'Mostrar o painel';
+    bGaveta.setAttribute('aria-expanded', on);
+  };
+  bGaveta.addEventListener('click', () => gaveta(!document.body.classList.contains('gaveta-aberta')));
+  document.addEventListener('pointerdown', (e) => { if (!hud.contains(e.target)) gaveta(false); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') gaveta(false); });
+  for (const id of ['bLook', 'bDemo', 'bHide']) $(id).addEventListener('click', () => gaveta(false));
 
   $('ctx').addEventListener('click', () => {
     const v = prompt('Limite de contexto do modelo, em tokens:', config.get('ctxLimite'));

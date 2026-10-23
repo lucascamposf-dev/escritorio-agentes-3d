@@ -132,18 +132,32 @@ input[type=color] { padding: 1px; width: 34px; height: 26px }
 .editor label { color: var(--mut) }
 .previa { display: block; width: 100%; aspect-ratio: 4 / 3; border-radius: 12px; background: rgba(0, 0, 0, .3); margin-top: 6px }
 
-@media (max-width: 760px) { #chips { display: none } #conexao { max-width: 55vw } }
-/* tela estreita: os botoes do topo viram um menu lateral que so abre no botao do menu */
-#bMenu { display: none; flex: none; margin-left: auto; padding: 6px 12px; font-size: 16px; line-height: 1.2 }
+/* tela estreita: so a animacao; o HUD inteiro vai para uma gaveta embaixo, aberta pela seta */
+#hud, #hudCorpo { display: contents }
+#bGaveta { display: none }
 @media (max-width: 900px) {
-  #bMenu { display: block }
-  #botoes { position: fixed; top: 56px; right: 8px; width: min(230px, calc(100vw - 16px)); max-height: calc(100vh - 64px); overflow: auto; flex-direction: column; padding: 8px;
-    transform: translateX(calc(100% + 16px)); visibility: hidden; transition: transform .2s, visibility .2s }
-  body.menu-aberto #botoes { transform: none; visibility: visible }
+  #hud { display: flex; flex-direction: column; align-items: center; position: fixed; left: 0; right: 0; bottom: 0; pointer-events: none;
+    transform: translateY(calc(100% - 30px)); transition: transform .25s }
+  body.gaveta-aberta #hud { transform: none }
+  #bGaveta { display: block; pointer-events: auto; height: 30px; padding: 0 22px; border-radius: 12px 12px 0 0; border-bottom: 0; background: var(--glass); backdrop-filter: blur(10px);
+    font-size: 13px; transition: transform .25s, color .2s, border-color .2s }
+  body.gaveta-aberta #bGaveta { color: var(--mut) }
+  #bGaveta.alerta { color: var(--warn); border-color: var(--warn); animation: pulso 1.4s ease-in-out infinite }
+  #hudCorpo { display: flex; flex-direction: column; gap: 8px; width: 100%; max-height: 75vh; overflow: auto; padding: 10px 8px 12px; pointer-events: auto; visibility: hidden;
+    transition: visibility .25s; background: var(--glass2); border-top: 1px solid var(--line); border-radius: var(--r) var(--r) 0 0; backdrop-filter: blur(10px) }
+  body.gaveta-aberta #hudCorpo { visibility: visible }
+  #topo { position: static; flex-wrap: wrap }
+  #topo > * { width: 100% }
+  #conexao { max-width: none }
+  #chips { display: flex; margin: 0 }
+  #botoes { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)) }
   #botoes button { display: flex; align-items: center; gap: 8px; text-align: left; padding: 8px 10px }
   #botoes button::after { content: attr(data-rot); order: 1 }
   #botoes button span { order: 2; margin-left: auto; color: var(--mut) }
   #bFora span { display: none }
+  #painel { position: static; width: auto }
+  #corpo { max-height: none }
 }
+
 /* celular: botoes maiores para o dedo, sem os que so servem no PC */
 @media (pointer: coarse) { #botoes button { padding: 8px 11px } #bDemo { display: none } #pedidosList .resp button { padding: 11px 8px; font-size: 14px } }

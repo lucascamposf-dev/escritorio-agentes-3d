@@ -330,30 +330,31 @@ test("pedido de permissao no painel: botoes permitir/negar e o modo fora", { ski
   assert.deepStrictEqual(limpo(), []);
 });
 
-test("tela estreita: os botoes do topo viram um menu lateral que abre no clique", { skip }, async () => {
+test("tela estreita: so a animacao; o HUD vai para uma gaveta embaixo que abre na seta", { skip }, async () => {
   await abrir();
   await page.until(`window.ESC && ESC.estado`);
-  const visivel = `(() => { const r = document.getElementById('botoes').getBoundingClientRect(); return getComputedStyle(document.getElementById('botoes')).visibility === 'visible' && r.right <= innerWidth && r.left >= 0; })()`;
-  // tela larga: botoes na barra, sem o botao do menu
-  assert.strictEqual(await page.eval(`getComputedStyle(document.getElementById('bMenu')).display`), "none");
-  assert.strictEqual(await page.eval(visivel), true);
+  const ve = (id) => `(() => { const e = document.getElementById('${id}'), r = e.getBoundingClientRect(); return getComputedStyle(e).visibility === 'visible' && r.width > 0 && r.top < innerHeight && r.bottom > 0; })()`;
+  // tela larga: tudo como antes, sem a seta
+  assert.strictEqual(await page.eval(`getComputedStyle(document.getElementById('bGaveta')).display`), "none");
+  assert.strictEqual(await page.eval(ve("botoes")) && await page.eval(ve("painel")), true);
+  // o Chrome de teste nao avanca as transicoes de CSS: desliga para medir as posicoes finais
+  await page.eval(`void document.head.appendChild(Object.assign(document.createElement('style'), { textContent: '* { transition: none !important }' }))`);
   await page.tamanho(700, 800);
   try {
-    await page.until(`getComputedStyle(document.getElementById('bMenu')).display !== 'none'`);
-    await page.until(`getComputedStyle(document.getElementById('botoes')).visibility === 'hidden'`);
-    await page.eval(`document.getElementById('bMenu').click()`);
-    await page.until(visivel);
-    assert.strictEqual(await page.eval(`document.getElementById('bMenu').getAttribute('aria-expanded')`), "true");
+    await page.until(ve("bGaveta"));
+    for (const id of ["conexao", "chips", "botoes", "painel"]) assert.strictEqual(await page.eval(ve(id)), false, id + " aparece com a gaveta fechada");
+    await page.eval(`document.getElementById('bGaveta').click()`);
+    for (const id of ["conexao", "chips", "botoes", "painel"]) assert.strictEqual(await page.eval(ve(id)), true, id + " nao aparece com a gaveta aberta");
+    assert.strictEqual(await page.eval(`document.getElementById('bGaveta').getAttribute('aria-expanded')`), "true");
     assert.match(await page.eval(`getComputedStyle(document.getElementById('bSound'), '::after').content`), /Som e avisos/);
-    await print("menu-lateral");
-    // clicar fora fecha
+    await print("gaveta-aberta");
+    // tocar na cena fecha
     await page.eval(`document.getElementById('stage').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))`);
-    await page.until(`getComputedStyle(document.getElementById('botoes')).visibility === 'hidden'`);
-    // abrir a aparencia pelo menu tambem fecha o menu
-    await page.eval(`document.getElementById('bMenu').click()`);
-    await page.until(visivel);
+    await page.until(`!document.body.classList.contains('gaveta-aberta')`);
+    // abrir a aparencia pela gaveta tambem fecha
+    await page.eval(`document.getElementById('bGaveta').click()`);
     await page.eval(`document.getElementById('bLook').click()`);
-    await page.until(`!document.body.classList.contains('menu-aberto')`);
+    await page.until(`!document.body.classList.contains('gaveta-aberta')`);
   } finally { await page.tamanho(1280, 800); }
   assert.deepStrictEqual(limpo(), []);
 });
