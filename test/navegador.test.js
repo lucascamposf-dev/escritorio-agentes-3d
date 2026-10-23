@@ -267,3 +267,34 @@ test("modo foco: com o agente trabalhando todos sentam e trabalham; painel minim
   assert.deepStrictEqual(limpo(), []);
   await req("GET", "/set?agent=build&status=idle");
 });
+
+test("modo foco: subagente tem prioridade na mesa cheia e os 5 temas funcionam com todos trabalhando", { skip }, async () => {
+  const d = "ESC.escritorio.diretor";
+  await req("GET", "/set?agent=build&status=working&kind=edit&text=editando%20app.js");
+  await abrir();
+  await page.until(`ESC.pronto === true`);
+  await page.eval(`void Object.assign(ESC.escritorio.engine, { escala: 3, passoMax: 0.4 })`);
+  await page.until(`['npc0', 'npc1', 'npc2'].every(id => ${d}.atores.get(id).lugar?.tipo === 'mesa')`, 30000);
+  // 8 salinhas + 3 lugares livres da mesa (os figurantes estao em 3 dos 6): os 2 ultimos tiram figurantes
+  for (let i = 0; i < 13; i++) await req("GET", `/sub?id=m${i}&name=Explore&text=lendo&kind=read`);
+  await page.until(`[...${d}.atores.values()].filter(a => a.papel === 'sub' && a.lugar).length === 13`, 30000);
+  const npcs = await page.eval(`['npc0', 'npc1', 'npc2'].map(id => ${d}.atores.get(id).lugar ? 'mesa' : 'lounge').sort().join()`);
+  assert.strictEqual(npcs, "lounge,lounge,mesa");
+  const donos = await page.eval(`JSON.stringify([...${d}.lugares.entries()])`);
+  assert.strictEqual(new Set(JSON.parse(donos).map(([, v]) => v)).size, JSON.parse(donos).length, "lugar com dois donos: " + donos);
+  for (let i = 0; i < 13; i++) await req("GET", `/sub?id=m${i}&status=done`);
+  // os 5 temas com o escritorio em foco
+  const ids = await page.eval(`import('/js/office3d/temas/index.js').then(m => m.TEMAS.map(t => t.id))`);
+  for (const id of ids) {
+    await page.eval(`ESC.escritorio.trocarTema('${id}')`);
+    await page.until(`ESC.escritorio.tema.id === '${id}'`);
+    await page.until(`['plan', 'npc0', 'npc1', 'npc2'].every(id => ${d}.atores.get(id).apoio && ${d}.atores.get(id).sentado)`, 90000);
+    await page.eval(`void Object.assign(ESC.escritorio.engine, { escala: 1, passoMax: 0.1 })`);
+    await new Promise((r) => setTimeout(r, 600));
+    await print("foco-tema-" + id);
+    await page.eval(`void Object.assign(ESC.escritorio.engine, { escala: 3, passoMax: 0.4 })`);
+  }
+  await page.eval(`ESC.escritorio.trocarTema(ESC.config.get('tema'))`);
+  assert.deepStrictEqual(limpo(), []);
+  await req("GET", "/set?agent=build&status=idle");
+});

@@ -333,14 +333,29 @@ export class Diretor {
       const s = ASSENTOS[i];
       return { id, tipo: 'mesa', i, x: s.x, z: s.z, ang: s.ang, via: s.aprox, aprox: s.aprox };
     }
+    // mesa cheia de figurantes ajudando: o subagente tem prioridade e o figurante vai para o lounge
+    for (const [id, dono] of this.lugares) {
+      if (!id.startsWith('mesa') || !dono.startsWith('npc')) continue;
+      const npc = this.atores.get(dono);
+      this.lugares.set(id, a.id); // antes do figurante procurar outro lugar
+      if (npc) { npc.lugar = null; this.apoiar(npc); }
+      const i = +id.slice(4), s = ASSENTOS[i];
+      return { id, tipo: 'mesa', i, x: s.x, z: s.z, ang: s.ang, via: s.aprox, aprox: s.aprox };
+    }
     return null;
   }
 
   liberarLugar(a) {
     if (!a.lugar) return;
     if (this.lugares.get(a.lugar.id) === a.id) this.lugares.delete(a.lugar.id);
-    if (a.lugar.tipo === 'pod') this.esc.sala.telaPod(a.lugar.i, null); else this.esc.sala.telaMesa(a.lugar.i, null);
+    const mesa = a.lugar.tipo === 'mesa';
+    if (mesa) this.esc.sala.telaMesa(a.lugar.i, null); else this.esc.sala.telaPod(a.lugar.i, null);
     a.lugar = null;
+    // abriu um lugar na mesa: um figurante que ficou em pe no lounge volta a sentar
+    if (mesa && this.foco) {
+      const npc = [...this.atores.values()].find((n) => n.papel === 'npc' && n.apoio && !n.lugar);
+      if (npc) this.apoiar(npc);
+    }
   }
 
   // terminou: leva o papel ao agente principal, as vezes passa na agua ou na quadra, e vai embora
@@ -517,7 +532,8 @@ export class Diretor {
       const subs = (s.subs || []).filter((x) => x.status !== 'done');
       c.font = 'bold 32px Segoe UI, sans-serif'; c.fillStyle = '#3ddc97'; c.fillText(`🤖 ${subs.length} subagente${subs.length === 1 ? '' : 's'}`, 40, y + 10);
       c.font = '28px Segoe UI, sans-serif'; c.fillStyle = '#9097a8';
-      c.fillText(subs.slice(0, 4).map((x) => nomeAleatorio(x.id) + ' (' + x.name + ')').join('  ·  ').slice(0, 70), 330, y + 14);
+      const nome = (x) => (this.atores.get('sub:' + x.id) || {}).nome || nomeAleatorio(x.id); // o mesmo nome do balao
+      c.fillText(subs.slice(0, 4).map((x) => nome(x) + ' (' + x.name + ')').join('  ·  ').slice(0, 70), 330, y + 14);
       y += 80;
       const lim = config.get('ctxLimite'), pct = Math.min(1, (s.ctxTokens || 0) / lim);
       c.fillStyle = '#9097a8'; c.font = '28px Segoe UI, sans-serif'; c.fillText('contexto', 40, y);

@@ -266,14 +266,14 @@ function handle(ev) {
           if (f) addEdited(f);
         }
         const id = part.id || part.callID;
-        if (id && !loggedParts.has(id)) { loggedParts.add(id); cap(loggedParts, 1000); addLog((child ? "↳ " : "") + text); }
+        if (id && !loggedParts.has(id)) { loggedParts.add(id); cap(loggedParts, 1000); addLog((child ? "› " : "") + text); }
       } else if (part.type === "reasoning") { text = "pensando…"; kind = "think"; }
       else if (part.type === "text") { text = "escrevendo a resposta…"; kind = "edit"; }
       else break;
       if (child) {
         const ci = childInfo.get(part.sessionID) || { name: "subagente", task: "" };
         childInfo.set(part.sessionID, { ...ci, text, kind });
-        text = "↳ " + text;
+        text = "› " + text;
       }
       work(text, kind);
       break;
@@ -489,7 +489,7 @@ function handleClaude(p) {
         if (p.tool_name !== "Task" && p.tool_name !== "Agent") childInfo.set(child, { ...ci, text, kind });
         touchChild(child);
         if (skill) addSkill(skill, "sub", ci.name);
-        addLog("↳ " + (ci.name || "subagente") + ": " + text);
+        addLog("› " + (ci.name || "subagente") + ": " + text);
         lastSignal = Date.now();
         push();
         break;
